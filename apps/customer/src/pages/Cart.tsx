@@ -77,6 +77,20 @@ export default function Cart() {
     }
   };
 
+  // Convert Razorpay's internal error strings into something a customer
+  // can act on. null = no message (e.g. successful capture, or user
+  // dismissed the modal voluntarily — nothing to say).
+  const friendlyRazorpayError = (raw: string | undefined): string | null => {
+    if (!raw) return null;
+    if (raw === 'dismissed')      return null;
+    if (raw === 'timeout')        return 'Payment took too long. Pay at the counter or open this order again to retry.';
+    if (raw === 'script_failed')  return 'Could not load the payment widget. Check your internet and pay at the counter.';
+    if (raw === 'no_key')         return null;   // configuration; not the customer's problem
+    if (raw.startsWith('init_error')) return 'Payment widget couldn\'t start. The order is placed — pay at the counter.';
+    if (raw === 'payment_failed') return 'Payment failed. The order is placed — try again from order tracking or pay at the counter.';
+    return `Payment didn't go through: ${raw}. The order is placed.`;
+  };
+
   const handlePlaceOrder = async () => {
     if (!restaurant || !breakdown || cart.lines.length === 0) return;
     setSubmitting(true);
@@ -117,6 +131,11 @@ export default function Cart() {
           });
           if (!result.ok) {
             console.info('Razorpay non-success:', result.error, '— order still placed.');
+            // Surface the failure path so the customer knows why no payment
+            // popup appeared, or why their card was declined. We DON'T block
+            // them from reaching the tracking page — the order is already in.
+            const human = friendlyRazorpayError(result.error);
+            if (human) setPlaceError(human);
           }
         } catch (e) {
           console.warn('Razorpay flow threw, continuing:', e);
@@ -412,23 +431,33 @@ export default function Cart() {
               </p>
             </div>
           )}
-          <div className="max-w-md md:max-w-2xl mx-auto px-container-margin py-4 flex items-center justify-between gap-4">
-            <div className="flex flex-col shrink-0">
+          <div className="max-w-md md:max-w-2xl mx-auto px-container-margin py-3 sm:py-4 flex items-center justify-between gap-3 sm:gap-4">
+            <div className="flex flex-col shrink-0 min-w-0">
               <span className="text-[10px] uppercase font-bold tracking-widest text-secondary leading-none mb-1">
                 Amount to Pay
               </span>
-              <span className="font-display text-headline-lg text-on-surface leading-none">{inr(breakdown.total)}</span>
+              <span className="font-display text-headline-md sm:text-headline-lg text-on-surface leading-none truncate">{inr(breakdown.total)}</span>
             </div>
             <button
               onClick={handlePlaceOrder}
               disabled={submitting}
+              aria-busy={submitting}
               className={cls(
-                'flex-grow bg-primary text-on-primary rounded-2xl h-14 font-display font-bold text-headline-md shadow-cta active:scale-[0.97] transition flex items-center justify-center gap-2',
-                submitting && 'opacity-70',
+                'flex-1 max-w-xs sm:max-w-sm bg-primary text-on-primary rounded-2xl h-12 sm:h-14 font-display font-bold text-body-lg sm:text-headline-md shadow-cta active:scale-[0.97] transition flex items-center justify-center gap-2',
+                submitting && 'opacity-70 cursor-wait',
               )}
             >
-              {submitting ? 'Processing…' : 'Proceed to Pay'}
-              <Icon name="arrow_forward" size={20} />
+              {submitting ? (
+                <>
+                  <span className="size-5 rounded-full border-2 border-on-primary border-t-transparent animate-spin" />
+                  Processing…
+                </>
+              ) : (
+                <>
+                  Proceed to Pay
+                  <Icon name="arrow_forward" size={20} />
+                </>
+              )}
             </button>
           </div>
         </div>

@@ -45,12 +45,23 @@ export interface RazorpayResult {
   error?: string;
 }
 
+// Hard ceiling so the Promise can never stay pending forever (which would
+// freeze the "Processing…" button on the checkout). 4 minutes is more than
+// any real customer needs — Razorpay's own session timeout is similar.
+const MAX_WAIT_MS = 4 * 60 * 1000;
+
 /**
  * Opens Razorpay Checkout. Requires the branch's key_id — caller should fetch
  * it via `getBranchPaymentKey(restaurantId)` first.
  *
- * Returns ok:false with error 'script_failed' if the SDK can't load, or
- * 'dismissed' / 'payment_failed' if the user cancels / Razorpay rejects.
+ * Resolves with:
+ *   ok:true        — payment captured (handler fired)
+ *   ok:false       — explicit failure path: script_failed, no_key, dismissed,
+ *                    payment_failed, init_error, timeout
+ *
+ * Guarantees the Promise resolves; it cannot hang. Errors during `rzp.open()`
+ * (e.g. invalid amount, malformed key) are caught and surfaced instead of
+ * leaving the caller awaiting forever.
  */
 export async function openRazorpay(params: RazorpayParams): Promise<RazorpayResult> {
   if (!params.keyId) return { ok: false, error: 'no_key' };
@@ -59,38 +70,53 @@ export async function openRazorpay(params: RazorpayParams): Promise<RazorpayResu
   if (!ready || !window.Razorpay) return { ok: false, error: 'script_failed' };
 
   return new Promise<RazorpayResult>((resolve) => {
-    const rzp = new window.Razorpay({
-      key: params.keyId,
-      amount: Math.round(params.amount * 100),
-      currency: 'INR',
-      name: params.restaurantName,
-      description: `Order ${params.orderCode}`,
-      // No order_id — using the amount-only flow. Production should create
-      // a Razorpay Order server-side and pass its id here so amounts can't be
-      // tampered with from the client.
-      prefill: {
-        name: params.customerName,
-        contact: params.customerPhone,
-        email: params.customerEmail,
-      },
-      notes: {
-        order_code: params.orderCode,
-      },
-      theme: { color: '#b7122a' },
-      handler: (response: any) => {
-        resolve({
-          ok: true,
-          payment_id: response.razorpay_payment_id,
-          signature: response.razorpay_signature,
-        });
-      },
-      modal: {
-        ondismiss: () => resolve({ ok: false, error: 'dismissed' }),
-      },
-    });
-    rzp.on('payment.failed', (resp: any) => {
-      resolve({ ok: false, error: resp?.error?.description ?? 'payment_failed' });
-    });
-    rzp.open();
+    let settled = false;
+    const safeResolve = (r: RazorpayResult) => { if (!settled) { settled = true; resolve(r); } };
+
+    // Safety timeout — never let the checkout button hang forever.
+    const timer = setTimeout(() => {
+      safeResolve({ ok: false, error: 'timeout' });
+    }, MAX_WAIT_MS);
+
+    // Wrap every resolve so we also clear the timer.
+    const finish = (r: RazorpayResult) => { clearTimeout(timer); safeResolve(r); };
+
+    try {
+      const rzp = new window.Razorpay({
+        key: params.keyId,
+        amount: Math.round(params.amount * 100),
+        currency: 'INR',
+        name: params.restaurantName,
+        description: `Order ${params.orderCode}`,
+        // No order_id — using the amount-only flow. Production should create
+        // a Razorpay Order server-side and pass its id here so amounts can't
+        // be tampered with from the client.
+        prefill: {
+          name: params.customerName,
+          contact: params.customerPhone,
+          email: params.customerEmail,
+        },
+        notes: { order_code: params.orderCode },
+        theme: { color: '#b7122a' },
+        handler: (response: any) => {
+          finish({
+            ok: true,
+            payment_id: response.razorpay_payment_id,
+            signature: response.razorpay_signature,
+          });
+        },
+        modal: {
+          ondismiss: () => finish({ ok: false, error: 'dismissed' }),
+        },
+      });
+      rzp.on('payment.failed', (resp: any) => {
+        finish({ ok: false, error: resp?.error?.description ?? 'payment_failed' });
+      });
+      rzp.open();
+    } catch (e: any) {
+      // Razorpay sometimes throws synchronously on bad params (invalid amount,
+      // malformed key). Surface it so the caller stops awaiting.
+      finish({ ok: false, error: `init_error: ${e?.message ?? 'unknown'}` });
+    }
   });
 }
