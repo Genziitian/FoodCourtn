@@ -40,8 +40,8 @@
 
 // @ts-ignore Deno-only
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-// @ts-ignore esm.sh
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+// @ts-ignore npm specifier (Deno native, no esm.sh fetch — avoids 10s bundling timeouts)
+import { createClient } from "npm:@supabase/supabase-js@2.45.4";
 
 declare const Deno: { env: { get(name: string): string | undefined } };
 
