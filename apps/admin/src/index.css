@@ -1,0 +1,16 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html, body, #root { height: 100%; }
+  body {
+    @apply bg-slate-50 text-slate-900 antialiased;
+    font-family: 'Inter', system-ui, sans-serif;
+  }
+}
+
+/* Fullscreen mode: hide sidebar + topbar, expand main content edge-to-edge. */
+body.admin-fullscreen aside.admin-sidebar { display: none !important; }
+body.admin-fullscreen header.admin-topbar { display: none !important; }
+body.admin-fullscreen main.admin-main { padding: 0 !important; }

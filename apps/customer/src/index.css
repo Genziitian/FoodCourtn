@@ -1,0 +1,46 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html, body, #root { height: 100%; }
+  body {
+    @apply bg-background text-on-background antialiased;
+    font-family: 'Inter', system-ui, sans-serif;
+    -webkit-tap-highlight-color: transparent;
+    text-rendering: optimizeLegibility;
+  }
+
+  h1, h2, h3, h4 { font-family: 'Plus Jakarta Sans', system-ui, sans-serif; }
+
+  /* Material Symbols rendering hint */
+  .material-symbols-outlined {
+    font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+    user-select: none;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-pill bg-primary px-6 py-4 font-display font-bold text-on-primary shadow-cta transition active:scale-[0.97] disabled:opacity-60;
+  }
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-pill bg-surface-container-lowest border border-outline-variant/40 px-4 py-2 text-on-surface font-semibold transition hover:bg-surface-container-low;
+  }
+  .pill {
+    @apply inline-flex items-center gap-1.5 rounded-pill px-3 py-1 text-label-sm font-medium;
+  }
+  .card {
+    @apply rounded-2xl bg-surface-container-lowest shadow-soft border border-outline-variant/10;
+  }
+  .section-label {
+    @apply text-[11px] font-bold uppercase tracking-widest text-secondary;
+  }
+}
+
+/* hide horizontal scrollbar for chip rows */
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
+
+/* iOS safe area helper */
+.pb-safe { padding-bottom: env(safe-area-inset-bottom); }
