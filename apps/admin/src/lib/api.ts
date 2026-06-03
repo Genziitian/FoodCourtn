@@ -1194,7 +1194,9 @@ async function createUserViaEdgeFn(input: {
         ?? (data as any)?.error
         ?? error.message
         ?? 'admin-create-user call failed';
-      const deployMiss = status === 404 || /not found|404|Function not found|not deployed|unreachable/i.test(String(message));
+      // "Failed to send a request to the Edge Function" is what supabase-js
+      // returns when the function is undeployed / unreachable.
+      const deployMiss = status === 404 || /not found|404|Function not found|not deployed|unreachable|Failed to send|Edge Function|FunctionsFetchError|NetworkError|Failed to fetch/i.test(String(message));
       return { ok: false, error: String(message), deployMiss };
     }
     if (!data?.ok) {

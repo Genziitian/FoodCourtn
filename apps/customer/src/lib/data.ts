@@ -124,15 +124,19 @@ export async function placeOrder(args: PlaceOrderArgs): Promise<Order> {
   if (result.ok) return result.order;
 
   // The function returned an explicit business error (out of stock, bad coupon,
-  // etc.) — bubble it up. We only fall back on infrastructure misses.
-  const isDeployMiss = /not found|404|Function not found|not deployed|unreachable|threw/i.test(result.error);
+  // etc.) — bubble it up. We only fall back on infrastructure misses (function
+  // doesn't exist, can't be reached, CORS, etc.). The "Failed to send a request
+  // to the Edge Function" string is what supabase-js returns when the function
+  // is unreachable / undeployed — that's what we treat as a deploy miss too.
+  const isDeployMiss = /not found|404|Function not found|not deployed|unreachable|threw|Failed to send|Edge Function|FunctionsFetchError|NetworkError|Failed to fetch/i.test(result.error);
   if (!isDeployMiss) {
     throw new Error(result.error);
   }
 
   console.info(
     '[placeOrder] place-order Edge Function not available — falling back to direct insert. ' +
-    'Deploy with: supabase functions deploy place-order --no-verify-jwt',
+    'Reason:', result.error,
+    '\nDeploy with: supabase functions deploy place-order --no-verify-jwt',
   );
   return placeOrderRow({
     restaurant_id: args.restaurant_id,
