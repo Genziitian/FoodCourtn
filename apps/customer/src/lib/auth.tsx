@@ -114,7 +114,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (e) { console.warn('Could not load addresses', e); }
   }, [customerId]);
 
-  // Try to load customer row + addresses from DB on mount.
+  // Load customer row + addresses + loyalty balance from DB once per customerId.
+  //
+  // ⚠️  Do NOT add `user` to the dependency array. We call setUser with a
+  // fresh object reference inside this effect, which would trigger another
+  // run — that ran forever in prod and left every page stuck on a loading
+  // spinner. The setUser callback form reads `prev` instead, and we
+  // short-circuit when nothing meaningful changed.
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -124,24 +130,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           getCustomer(customerId),
           getLoyaltyBalance(customerId),
         ]);
-        if (!cancelled && row && !user) {
-          setUser({
-            id: row.id,
-            name: row.name ?? 'Friend',
-            phone: row.phone ?? null,
-            email: row.email ?? null,
-            initials: initials(row.name ?? 'Friend'),
-            joined_at: row.created_at ?? new Date().toISOString(),
-            total_orders: row.total_orders ?? 0,
-            total_spent: Number(row.total_spent ?? 0),
-            loyalty_balance: coinBalance,
-            notify_order_updates: true,
-            notify_promotions: false,
-            notify_loyalty: true,
+        if (!cancelled) {
+          setUser(prev => {
+            if (!prev) {
+              // No restored session — hydrate from DB only if a customer row exists.
+              if (!row) return null;
+              return {
+                id: row.id,
+                name: row.name ?? 'Friend',
+                phone: row.phone ?? null,
+                email: row.email ?? null,
+                initials: initials(row.name ?? 'Friend'),
+                joined_at: row.created_at ?? new Date().toISOString(),
+                total_orders: row.total_orders ?? 0,
+                total_spent: Number(row.total_spent ?? 0),
+                loyalty_balance: coinBalance,
+                notify_order_updates: true,
+                notify_promotions: false,
+                notify_loyalty: true,
+              };
+            }
+            // Already have a restored session. Only allocate a new object if
+            // the balance actually changed; otherwise return the same ref so
+            // React doesn't re-render.
+            if (prev.loyalty_balance === coinBalance) return prev;
+            return { ...prev, loyalty_balance: coinBalance };
           });
-        } else if (!cancelled && user) {
-          // Refresh loyalty balance for an already-restored session.
-          setUser(u => u ? { ...u, loyalty_balance: coinBalance } : u);
         }
       } catch {
         /* Supabase not reachable — stay logged out */
@@ -150,7 +164,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!cancelled) setLoading(false);
     })();
     return () => { cancelled = true; };
-  }, [customerId, user, reloadAddresses]);
+  }, [customerId, reloadAddresses]);
 
   const value: AuthCtx = {
     user, customerId, addresses, loading,
