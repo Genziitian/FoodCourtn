@@ -79,6 +79,7 @@ const DEFAULT_SETTINGS: FormState['settings'] = {
   auto_print_kot: true,
   loyalty_earn_rate: 5,
   loyalty_max_redeem_percent: 10,
+  apply_taxes_and_charges: true,
   open_at: '09:00',
   close_at: '23:00',
   hours_weekly: defaultWeeklyHours(),
@@ -468,9 +469,20 @@ function BrandingPanel({
 }
 
 function TaxPanel({ form, setS }: { form: FormState; setS: SetS }) {
+  const applyTaxes = form.settings.apply_taxes_and_charges !== false;
   return (
-    <Panel title="Tax & Charges" subtitle="GST, service charge, packing fees applied to every order.">
-      <div className="grid grid-cols-2 gap-4">
+    <Panel title="Tax & Charges" subtitle="GST, service charge, parcel fees applied to every order.">
+      {/* Master toggle: when off, GST + service charge are not added to the bill
+          and the customer doesn't see the "Taxes & Service Charge" line at all.
+          Parcel charge on takeaway is unaffected — it's a separate line item. */}
+      <Toggle
+        checked={applyTaxes}
+        onChange={v => setS('apply_taxes_and_charges', v)}
+        label="Apply taxes & service charge"
+        description="When off, the customer bill skips the Tax + Service line entirely. Parcel charge on takeaway is independent and always included."
+      />
+
+      <div className={cls('grid grid-cols-2 gap-4 transition', !applyTaxes && 'opacity-50 pointer-events-none')}>
         <Field label="GST percentage">
           <div className="relative">
             <Input type="number" value={form.settings.gst_percent} onChange={e => setS('gst_percent', Number(e.target.value))} className="pr-10" />
@@ -483,19 +495,23 @@ function TaxPanel({ form, setS }: { form: FormState; setS: SetS }) {
             <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 text-sm">%</span>
           </div>
         </Field>
-        <Field label="Packing charge" hint="Applied only to takeaway orders.">
-          <div className="relative">
-            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-sm">₹</span>
-            <Input type="number" value={form.settings.packing_charge} onChange={e => setS('packing_charge', Number(e.target.value))} className="pl-7" />
-          </div>
-        </Field>
       </div>
-      <Toggle
-        checked={form.settings.gst_inclusive}
-        onChange={v => setS('gst_inclusive', v)}
-        label="GST inclusive pricing"
-        description="If on, item prices already include GST; no tax line shown to customer."
-      />
+
+      <Field label="Parcel charge" hint="Automatically added to every Takeaway order. Shown as its own line on the customer bill. Set to 0 to disable.">
+        <div className="relative max-w-xs">
+          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-sm">₹</span>
+          <Input type="number" value={form.settings.packing_charge} onChange={e => setS('packing_charge', Number(e.target.value))} className="pl-7" />
+        </div>
+      </Field>
+
+      <div className={cls('transition', !applyTaxes && 'opacity-50 pointer-events-none')}>
+        <Toggle
+          checked={form.settings.gst_inclusive}
+          onChange={v => setS('gst_inclusive', v)}
+          label="GST inclusive pricing"
+          description="If on, item prices already include GST; no tax line shown to customer."
+        />
+      </div>
     </Panel>
   );
 }

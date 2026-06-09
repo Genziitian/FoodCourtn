@@ -383,15 +383,21 @@ export default function Cart() {
 
                 <div className="space-y-4">
                   <Row label="Item Total" value={inr(breakdown.subtotal)} />
-                  {/* Tax + service charge combined; packing fee shown separately
-                      below so the customer can see it appear when they flip to Takeaway. */}
-                  <Row label="Taxes & Service Charge" value={inr(breakdown.tax + breakdown.service_charge)} />
+                  {/* Tax + service charge row — only shown when the restaurant
+                      has `apply_taxes_and_charges` enabled AND there's something
+                      to show. Honours the admin toggle in Settings → Tax & Charges. */}
+                  {(breakdown.tax + breakdown.service_charge) > 0 && (
+                    <Row label="Taxes & Service Charge" value={inr(breakdown.tax + breakdown.service_charge)} />
+                  )}
+                  {/* Parcel/packing charge — automatic on takeaway. The total
+                      already includes this amount; we render it as its own line
+                      so the customer can see exactly what the takeaway add-on is. */}
                   {breakdown.packing_charge > 0 && (
                     <div className="flex justify-between text-secondary">
                       <span className="font-medium inline-flex items-center gap-1.5">
                         <Icon name="shopping_bag" size={14} className="text-on-surface-variant" />
-                        Packing Charges
-                        <span className="text-[10px] uppercase font-bold tracking-wider bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">Takeaway</span>
+                        Parcel Charge
+                        <span className="text-[10px] uppercase font-bold tracking-wider bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">Included · Takeaway</span>
                       </span>
                       <span className="text-on-surface font-semibold">{inr(breakdown.packing_charge)}</span>
                     </div>
@@ -845,17 +851,17 @@ function CoinsCard({
   balance, used, onToggle,
 }: { balance: number; used: boolean; onToggle: () => void }) {
   return (
-    <div className="bg-gradient-to-br from-primary-container to-primary rounded-2xl p-5 text-white shadow-xl flex items-center justify-between relative overflow-hidden">
-      <div className="absolute -right-4 -bottom-4 w-24 h-24 bg-white/10 rounded-full blur-2xl" />
-      <div className="absolute -left-4 -top-4 w-20 h-20 bg-white/5 rounded-full blur-xl" />
+    <div className="bg-gradient-to-br from-amber-500 via-orange-500 to-orange-600 rounded-2xl p-5 text-white shadow-xl flex items-center justify-between relative overflow-hidden">
+      <div className="absolute -right-4 -bottom-4 w-24 h-24 bg-white/15 rounded-full blur-2xl" />
+      <div className="absolute -left-4 -top-4 w-20 h-20 bg-white/10 rounded-full blur-xl" />
 
       <div className="flex items-center gap-md relative z-10">
-        <div className="size-12 bg-white/20 rounded-xl grid place-items-center shadow-lg border border-white/20">
+        <div className="size-12 bg-white/25 rounded-xl grid place-items-center shadow-lg border border-white/30">
           <Icon name="token" size={26} fill className="text-white" />
         </div>
         <div>
           <h3 className="font-display text-[16px] font-bold text-white">{balance} FoodCoins</h3>
-          <p className="text-label-sm text-white/85">
+          <p className="text-label-sm text-white/90">
             {balance > 0
               ? `Redeem for up to ${inr(balance)} discount`
               : 'Place an order to start earning'}
@@ -875,7 +881,7 @@ function CoinsCard({
         <span
           className={cls(
             'absolute top-[2px] left-[2px] size-5 rounded-full shadow-md transition-all',
-            used ? 'translate-x-6 bg-white' : 'translate-x-0 bg-primary-container',
+            used ? 'translate-x-6 bg-white' : 'translate-x-0 bg-orange-300',
           )}
         />
       </button>

@@ -20,6 +20,10 @@ export interface RestaurantSettings {
   auto_print_kot: boolean;
   loyalty_earn_rate: number;          // points per 100 spent
   loyalty_max_redeem_percent: number; // max % of order redeemable
+  // When false, taxes (GST) and service-charge percentages are skipped entirely
+  // — neither added to the total nor shown on the customer bill summary. The
+  // packing/parcel charge on takeaway is unaffected. Defaults to true.
+  apply_taxes_and_charges?: boolean;
 }
 
 export interface Restaurant {

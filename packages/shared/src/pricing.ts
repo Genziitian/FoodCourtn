@@ -56,14 +56,23 @@ export function calculatePrice({
   }
 
   // ---- tax ----
+  // Honour the per-restaurant `apply_taxes_and_charges` master switch. When the
+  // owner has turned it off in Admin → Settings → Tax & Charges, we zero out
+  // both GST and service charge so the customer sees a clean bill (item total +
+  // packing on takeaway only). Defaults to ON if the field hasn't been set.
+  const applyTaxes = settings.apply_taxes_and_charges !== false;
   const taxable = Math.max(0, afterDiscount - coinsValue);
-  const tax = settings.gst_inclusive ? 0 : (taxable * settings.gst_percent) / 100;
+  const tax = !applyTaxes || settings.gst_inclusive
+    ? 0
+    : (taxable * settings.gst_percent) / 100;
 
   // ---- charges ----
   const serviceCharge =
-    settings.service_charge_percent > 0
+    applyTaxes && settings.service_charge_percent > 0
       ? (taxable * settings.service_charge_percent) / 100
       : 0;
+  // Packing / parcel charge is separate from the tax toggle: takeaway orders
+  // always include it so the kitchen recovers the cost of the box.
   const packingCharge =
     cart.order_type === 'takeaway' ? settings.packing_charge : 0;
 
