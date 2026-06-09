@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { cls, inr } from '@foodcourt/shared';
 import { useAuth } from '../lib/auth';
 import { useCart } from '../lib/cart';
-import { useRestaurant } from '../lib/data';
+import { useOrderHistory, useRestaurant } from '../lib/data';
 import { Icon } from '../components/Icon';
 import { BottomNav } from '../components/BottomNav';
 
@@ -12,10 +12,15 @@ type SupportSheet = null | 'help' | 'contact' | 'terms';
 export default function Profile() {
   const { slug, qrToken } = useParams();
   const navigate = useNavigate();
-  const { user, logout, updateUser } = useAuth();
+  const { user, customerId, logout, updateUser } = useAuth();
   const cartCount = useCart(s => s.cart.lines.reduce((n, l) => n + l.qty, 0));
   // For Contact restaurant we want the current restaurant's phone if known.
   const { restaurant } = useRestaurant(slug ?? '');
+  // Recent (completed) orders so the customer can re-order in one tap.
+  const { orders: pastOrders } = useOrderHistory(customerId);
+  const recentCompleted = (pastOrders ?? [])
+    .filter(o => o.status === 'completed')
+    .slice(0, 3);
 
   const base = qrToken ? `/${slug}/t/${qrToken}` : `/${slug ?? 'the-spice-route'}`;
 
@@ -115,7 +120,7 @@ export default function Profile() {
         <Group title="Account">
           <Row
             icon="receipt_long"
-            label="Order History"
+            label="Order Status"
             sub={`${user.total_orders} past orders`}
             onClick={() => navigate(`${base}/profile/orders`)}
             badge={cartCount > 0 ? `${cartCount} in cart` : undefined}
@@ -127,6 +132,54 @@ export default function Profile() {
             onClick={() => navigate(`${base}/profile/coins`)}
           />
         </Group>
+
+        {/* Recent orders — completed only, with one-tap re-order */}
+        {recentCompleted.length > 0 && (
+          <section>
+            <div className="flex items-end justify-between px-1 mb-2">
+              <h3 className="section-label">Recent Orders</h3>
+              <button
+                onClick={() => navigate(`${base}/profile/orders`)}
+                className="text-label-sm text-primary font-bold"
+              >
+                See all
+              </button>
+            </div>
+            <ul className="space-y-2">
+              {recentCompleted.map(o => {
+                const itemPreview = (o.items ?? [])
+                  .slice(0, 2)
+                  .map((it: any) => `${it.qty}× ${it.item_name}`)
+                  .join(' · ') || 'View details';
+                const moreCount = Math.max(0, (o.items?.length ?? 0) - 2);
+                return (
+                  <li key={o.id} className="card p-3 flex items-center gap-3">
+                    <span className="size-10 grid place-items-center rounded-xl bg-primary/10 text-primary shrink-0">
+                      <Icon name="restart_alt" size={20} />
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <p className="font-mono text-label-sm font-bold text-on-surface">{o.code}</p>
+                        <span className="text-label-sm text-on-surface-variant">·</span>
+                        <span className="text-label-sm font-semibold text-on-surface">{inr(Number(o.total))}</span>
+                      </div>
+                      <p className="text-label-sm text-on-surface-variant truncate">
+                        {itemPreview}{moreCount > 0 ? ` +${moreCount} more` : ''}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => navigate(`${base}/order/${o.code}`)}
+                      className="rounded-pill bg-primary text-on-primary text-label-bold font-bold px-3 py-1.5 active:scale-95 shrink-0"
+                      aria-label={`Re-order ${o.code}`}
+                    >
+                      Re-order
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        )}
 
         {/* Preferences */}
         <Group title="Preferences">
@@ -301,7 +354,7 @@ function HelpContent() {
   const faqs = [
     { q: 'How do I place an order?', a: 'Scan the QR code on your table or browse the menu, add items to your cart, then tap "Place order". Your kitchen will receive it immediately.' },
     { q: 'When do FoodCoins land?', a: 'Coins are credited automatically as soon as the order is placed. The rate depends on the restaurant — check the FoodCoins page to see your balance.' },
-    { q: 'Can I cancel an order?', a: 'Orders can be cancelled within ~1 minute, before the kitchen accepts them. Open the order from "Order History" and tap Cancel.' },
+    { q: 'Can I cancel an order?', a: 'Orders can be cancelled within ~1 minute, before the kitchen accepts them. Open the order from "Order Status" and tap Cancel.' },
     { q: 'How do I redeem coins?', a: 'On the cart, tap "Use FoodCoins" and choose how many to redeem (subject to the restaurant\'s max redemption percent).' },
     { q: 'I didn\'t get my OTP?', a: 'Tap "Resend OTP" after the 30s timer expires. Check spam, or verify your phone is correct.' },
   ];

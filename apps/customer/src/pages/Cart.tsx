@@ -195,13 +195,12 @@ export default function Cart() {
   if (!restaurant) return null;
 
   const empty = cart.lines.length === 0;
-  const taxesAndCharges = breakdown ? breakdown.tax + breakdown.service_charge + breakdown.packing_charge : 0;
   const totalSavings = breakdown ? breakdown.discount + breakdown.coins_value : 0;
 
   return (
-    <div className="min-h-screen bg-background pb-44 font-sans">
+    <div className="min-h-screen bg-background pb-44 lg:pb-24 font-sans">
       {/* Header */}
-      <header className="bg-surface/80 backdrop-blur-xl border-b border-outline-variant/30 sticky top-0 z-40 flex justify-between items-center px-container-margin h-16">
+      <header className="bg-surface/80 backdrop-blur-xl border-b border-outline-variant/30 sticky top-0 z-40 flex justify-between items-center px-container-margin lg:px-8 h-16">
         <div className="flex items-center gap-md">
           <button
             onClick={goBack}
@@ -248,7 +247,13 @@ export default function Cart() {
         </div>
       </header>
 
-      <main className="max-w-md md:max-w-2xl mx-auto px-container-margin py-6 space-y-8">
+      {/* Responsive layout:
+            • Mobile / tablet (<lg): single column, sticky pay bar at the bottom.
+            • Desktop (lg+): two columns — items left, summary + inline pay CTA right.
+              The sticky bottom bar is hidden via `lg:hidden` on its wrapper. */}
+      <main className="max-w-md md:max-w-2xl lg:max-w-6xl mx-auto px-container-margin lg:px-8 py-6 lg:grid lg:grid-cols-[1fr_360px] lg:gap-8 lg:items-start space-y-8 lg:space-y-0">
+        {/* ── LEFT COLUMN ────────────────────────────────────────────── */}
+        <div className="space-y-8 min-w-0">
         {/* Order type segmented */}
         <section className="space-y-4">
           <div className="bg-surface-container p-1 rounded-2xl flex relative h-12">
@@ -346,7 +351,7 @@ export default function Cart() {
 
             {/* Offers & rewards */}
             <section className="space-y-4">
-              <h2 className="section-label px-1">Offers &amp; Rewards</h2>
+              <h2 className="section-label px-1">Offers & Rewards</h2>
 
               <AppliedCouponCard
                 code={breakdown?.applied_coupon?.code ?? null}
@@ -364,7 +369,13 @@ export default function Cart() {
                 onToggle={() => toggleCoins()}
               />
             </section>
+          </>
+        )}
+        </div>
 
+        {/* ── RIGHT COLUMN (Bill Summary + Payment + inline CTA on lg+) ─ */}
+        {!empty && (
+        <aside className="space-y-6 lg:sticky lg:top-20 min-w-0">
             {/* Bill summary */}
             {breakdown && (
               <section className="card p-6 space-y-6">
@@ -372,7 +383,19 @@ export default function Cart() {
 
                 <div className="space-y-4">
                   <Row label="Item Total" value={inr(breakdown.subtotal)} />
-                  <Row label="Taxes &amp; Charges" value={inr(taxesAndCharges)} />
+                  {/* Tax + service charge combined; packing fee shown separately
+                      below so the customer can see it appear when they flip to Takeaway. */}
+                  <Row label="Taxes & Service Charge" value={inr(breakdown.tax + breakdown.service_charge)} />
+                  {breakdown.packing_charge > 0 && (
+                    <div className="flex justify-between text-secondary">
+                      <span className="font-medium inline-flex items-center gap-1.5">
+                        <Icon name="shopping_bag" size={14} className="text-on-surface-variant" />
+                        Packing Charges
+                        <span className="text-[10px] uppercase font-bold tracking-wider bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">Takeaway</span>
+                      </span>
+                      <span className="text-on-surface font-semibold">{inr(breakdown.packing_charge)}</span>
+                    </div>
+                  )}
                   {totalSavings > 0 && (
                     <div className="bg-primary/5 -mx-6 px-6 py-3 flex justify-between text-primary">
                       <div className="flex items-center gap-2">
@@ -417,13 +440,48 @@ export default function Cart() {
                 </span>
               </div>
             </section>
-          </>
+
+            {/* Inline Pay CTA — desktop-only; mobile uses the sticky bottom bar below */}
+            {breakdown && (
+              <div className="hidden lg:block">
+                {placeError && (
+                  <p className="text-sm font-medium text-error bg-error-container/60 rounded-lg px-3 py-2 text-center mb-3">
+                    {placeError}
+                  </p>
+                )}
+                <button
+                  onClick={handlePlaceOrder}
+                  disabled={submitting}
+                  aria-busy={submitting}
+                  className={cls(
+                    'w-full bg-primary text-on-primary rounded-2xl h-14 font-display font-bold text-headline-md shadow-cta active:scale-[0.97] transition flex items-center justify-center gap-2',
+                    submitting && 'opacity-70 cursor-wait',
+                  )}
+                >
+                  {submitting ? (
+                    <>
+                      <span className="size-5 rounded-full border-2 border-on-primary border-t-transparent animate-spin" />
+                      Processing…
+                    </>
+                  ) : (
+                    <>
+                      Pay {inr(breakdown.total)}
+                      <Icon name="arrow_forward" size={20} />
+                    </>
+                  )}
+                </button>
+                <p className="text-center text-label-sm text-on-surface-variant mt-2">
+                  Secured by Razorpay · UPI, Cards, Wallets
+                </p>
+              </div>
+            )}
+        </aside>
         )}
       </main>
 
-      {/* Sticky Pay CTA */}
+      {/* Sticky Pay CTA — mobile / tablet only. On lg+ the right column has its own inline CTA. */}
       {!empty && breakdown && (
-        <div className="fixed bottom-[64px] left-0 right-0 z-30 bg-surface/90 backdrop-blur-xl border-t border-outline-variant/30 shadow-topfloat">
+        <div className="lg:hidden fixed bottom-[64px] left-0 right-0 z-30 bg-surface/90 backdrop-blur-xl border-t border-outline-variant/30 shadow-topfloat">
           {placeError && (
             <div className="max-w-md md:max-w-2xl mx-auto px-container-margin pt-3">
               <p className="text-sm font-medium text-error bg-error-container/60 rounded-lg px-3 py-2 text-center">
@@ -475,6 +533,8 @@ export default function Cart() {
 function CartItemRow({
   line, onInc, onDec, onRemove, onEdit,
 }: { line: CartLine; onInc: () => void; onDec: () => void; onRemove: () => void; onEdit: () => void }) {
+  const [imgFailed, setImgFailed] = useState(false);
+  const initials = line.item_name.split(/\s+/).map(w => w[0]).slice(0, 2).join('').toUpperCase() || '?';
   // Build sub-description from spice level + modifiers + variant
   const parts: string[] = [];
   if (line.variant_name) parts.push(line.variant_name);
@@ -484,9 +544,19 @@ function CartItemRow({
 
   return (
     <article className="card p-md flex gap-md">
-      <div className="w-28 h-28 rounded-2xl overflow-hidden shrink-0 shadow-sm bg-surface-container">
-        {line.image_url && (
-          <img src={line.image_url} alt={line.item_name} className="w-full h-full object-cover" />
+      <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl overflow-hidden shrink-0 shadow-sm bg-surface-container">
+        {!imgFailed && line.image_url ? (
+          <img
+            src={line.image_url}
+            alt={line.item_name}
+            loading="lazy"
+            onError={() => setImgFailed(true)}
+            className="w-full h-full object-cover"
+          />
+        ) : (
+          <div className="w-full h-full bg-gradient-to-br from-primary/20 to-primary/5 grid place-items-center">
+            <span className="font-display font-extrabold text-2xl text-primary/70">{initials}</span>
+          </div>
         )}
       </div>
       <div className="flex flex-col flex-grow justify-between py-0.5 min-w-0">
@@ -540,10 +610,28 @@ function CartItemRow({
 function UpsellCard({
   upsell, onAdd,
 }: { upsell: { id: string; name: string; price: number; image_url: string }; onAdd: () => void }) {
+  const [imgFailed, setImgFailed] = useState(false);
+  // Two-letter initials for the gradient fallback when the image is broken
+  // (we used to render the browser's broken-image icon + alt text, which
+  // looked like text overlapping the picture).
+  const initials = upsell.name.split(/\s+/).map(w => w[0]).slice(0, 2).join('').toUpperCase() || '?';
+
   return (
-    <div className="shrink-0 w-44 bg-surface-container-lowest rounded-2xl p-3 shadow-soft border border-outline-variant/10">
+    <div className="shrink-0 w-36 sm:w-44 bg-surface-container-lowest rounded-2xl p-3 shadow-soft border border-outline-variant/10">
       <div className="relative mb-3">
-        <img src={upsell.image_url} alt={upsell.name} className="w-full h-28 object-cover rounded-xl shadow-sm" />
+        {imgFailed || !upsell.image_url ? (
+          <div className="w-full h-24 sm:h-28 rounded-xl shadow-sm bg-gradient-to-br from-primary/20 to-primary/5 grid place-items-center">
+            <span className="font-display font-extrabold text-[28px] text-primary/70">{initials}</span>
+          </div>
+        ) : (
+          <img
+            src={upsell.image_url}
+            alt={upsell.name}
+            loading="lazy"
+            onError={() => setImgFailed(true)}
+            className="w-full h-24 sm:h-28 object-cover rounded-xl shadow-sm"
+          />
+        )}
         <div className="absolute bottom-2 right-2 bg-white/95 backdrop-blur-md px-2 py-1 rounded-lg text-primary font-bold text-[13px] shadow-sm">
           {inr(upsell.price)}
         </div>

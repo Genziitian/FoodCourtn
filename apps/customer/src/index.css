@@ -3,12 +3,21 @@
 @tailwind utilities;
 
 @layer base {
-  html, body, #root { height: 100%; }
+  html, body, #root {
+    height: 100%;
+    /* Prevent any descendant from triggering a horizontal scrollbar on
+       mobile (was visible as a left/right wobble when scrolling). Any
+       intentional horizontal scrollers inside (e.g. category strip) keep
+       working because they're nested with overflow-x-auto on themselves. */
+    overflow-x: hidden;
+    max-width: 100vw;
+  }
   body {
     @apply bg-background text-on-background antialiased;
     font-family: 'Inter', system-ui, sans-serif;
     -webkit-tap-highlight-color: transparent;
     text-rendering: optimizeLegibility;
+    overscroll-behavior-x: none;
   }
 
   h1, h2, h3, h4 { font-family: 'Plus Jakarta Sans', system-ui, sans-serif; }

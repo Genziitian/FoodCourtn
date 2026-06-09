@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import type { MenuItem } from '@foodcourt/shared';
 import { cls, inr } from '@foodcourt/shared';
@@ -9,6 +9,7 @@ import { ItemDetailModal } from '../components/ItemDetailModal';
 import { BottomNav } from '../components/BottomNav';
 import { Icon } from '../components/Icon';
 import { HeroSlider } from '../components/HeroSlider';
+import { ProfileBadge } from '../components/ProfileBadge';
 
 const MENU_HERO_FALLBACKS = [
   'https://images.unsplash.com/photo-1631452180519-c014fe946bc7?w=1600',
@@ -37,6 +38,25 @@ export default function Menu() {
   const [query, setQuery] = useState('');
   const [openItem, setOpenItem] = useState<MenuItem | null>(null);
 
+  // Make the item-detail modal participate in browser history.
+  // Without this, pressing the device/browser back button while the modal
+  // is open leaves the Menu page entirely (lands you on the Landing /
+  // "Start Ordering" screen). With this, back simply closes the modal.
+  useEffect(() => {
+    if (!openItem) return;
+    // Push a placeholder history entry the moment the modal opens.
+    window.history.pushState({ itemModal: true }, '');
+    const onPop = () => setOpenItem(null);
+    window.addEventListener('popstate', onPop);
+    return () => {
+      window.removeEventListener('popstate', onPop);
+      // If we close the modal programmatically (close button / overlay tap),
+      // pop the placeholder so the URL stays clean and a real back doesn't
+      // accidentally go back twice.
+      if (window.history.state?.itemModal) window.history.back();
+    };
+  }, [openItem]);
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return items.filter(i => {
@@ -56,13 +76,17 @@ export default function Menu() {
     [items],
   );
 
-  // Hero strip uses the same carousel rules as the Landing page: prefer the
-  // restaurant's hero_images[], fall back to the legacy single hero_image,
-  // then to a small set of food photos so the strip always has imagery.
+  // Hero strip resolution order — owner can override per surface:
+  //   1. menu_hero_images[]  (Menu-specific, set in Admin → Settings → Branding)
+  //   2. hero_images[]       (Landing's images, used as fallback for back-compat)
+  //   3. hero_image           (legacy single image)
+  //   4. built-in food photos
   const menuHeroImages = useMemo(() => {
     if (!restaurant) return MENU_HERO_FALLBACKS;
-    const fromArray = (restaurant.hero_images ?? []).filter(Boolean);
-    if (fromArray.length) return fromArray.slice(0, 5);
+    const fromMenu = (restaurant.menu_hero_images ?? []).filter(Boolean);
+    if (fromMenu.length) return fromMenu.slice(0, 5);
+    const fromLanding = (restaurant.hero_images ?? []).filter(Boolean);
+    if (fromLanding.length) return fromLanding.slice(0, 5);
     if (restaurant.hero_image) return [restaurant.hero_image];
     return MENU_HERO_FALLBACKS;
   }, [restaurant]);
@@ -107,15 +131,17 @@ export default function Menu() {
 
   return (
     <div className="min-h-screen bg-surface pb-32 font-sans">
-      {/* Sticky top bar */}
+      {/* Sticky top bar — back on the left, profile on the right (info icon removed per spec) */}
       <header className="sticky top-0 z-50 bg-surface/80 backdrop-blur-xl border-b border-outline-variant/30 h-16 px-container-margin flex items-center justify-between">
-        <button className="size-10 grid place-items-center rounded-full hover:bg-surface-container-high/50 active:scale-95 transition">
-          <Icon name="menu" size={22} className="text-primary" />
+        <button
+          onClick={() => navigate(qrToken ? `/${slug}/t/${qrToken}` : `/${slug}`)}
+          className="size-10 grid place-items-center rounded-full hover:bg-surface-container-high/50 active:scale-95 transition"
+          aria-label="Back to landing"
+        >
+          <Icon name="arrow_back" size={22} className="text-primary" />
         </button>
         <h1 className="font-display text-headline-lg text-primary truncate">{restaurant.name}</h1>
-        <button className="size-10 grid place-items-center rounded-full hover:bg-surface-container-high/50 active:scale-95 transition">
-          <Icon name="info" size={22} className="text-primary" />
-        </button>
+        <ProfileBadge />
       </header>
 
       <main className="max-w-md mx-auto">

@@ -32,7 +32,8 @@ export interface Restaurant {
   prep_time_min: number;
   prep_time_max: number;
   hero_image: string | null;
-  hero_images?: string[] | null;     // up to 5 feature images for the carousel; falls back to hero_image
+  hero_images?: string[] | null;        // up to 5 carousel images on the Landing page; falls back to hero_image
+  menu_hero_images?: string[] | null;   // up to 5 carousel images on the Menu page header; falls back to hero_images
   welcome_text: string;
   is_open: boolean;
   settings: RestaurantSettings;

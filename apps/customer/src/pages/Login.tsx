@@ -171,7 +171,7 @@ export default function Login() {
               <button
                 onClick={sendPhoneOtp}
                 disabled={sending}
-                className={cls('w-full rounded-pill bg-primary text-on-primary font-display font-bold text-body-lg py-4 shadow-cta active:scale-[0.97] transition flex items-center justify-center gap-2', sending && 'opacity-70')}
+                className={cls('w-full rounded-2xl bg-primary text-on-primary font-display font-bold text-body-lg py-4 shadow-cta active:scale-[0.97] transition flex items-center justify-center gap-2', sending && 'opacity-70')}
               >
                 {sending ? 'Sending OTP…' : (
                   <>
@@ -182,7 +182,7 @@ export default function Login() {
               </button>
 
               <div className="text-center text-label-sm text-on-surface-variant">
-                By continuing, you agree to our Terms &amp; Privacy.
+                By continuing, you agree to our Terms & Privacy.
               </div>
             </>
           ) : (
@@ -216,9 +216,9 @@ export default function Login() {
               <button
                 onClick={verify}
                 disabled={verifying || otp.join('').length !== 6}
-                className={cls('w-full rounded-pill bg-primary text-on-primary font-display font-bold text-body-lg py-4 shadow-cta active:scale-[0.97] transition flex items-center justify-center gap-2', verifying && 'opacity-70')}
+                className={cls('w-full rounded-2xl bg-primary text-on-primary font-display font-bold text-body-lg py-4 shadow-cta active:scale-[0.97] transition flex items-center justify-center gap-2', verifying && 'opacity-70')}
               >
-                {verifying ? 'Verifying…' : 'Verify &amp; sign in'}
+                {verifying ? 'Verifying…' : 'Verify & sign in'}
               </button>
 
               <div className="text-center text-label-sm text-on-surface-variant">

@@ -94,6 +94,14 @@ export default {
       spacing: {
         'container-margin': '16px',
         gutter: '12px',
+        // Custom design-system spacing keys. `md` is used heavily in the
+        // customer app (`p-md`, `gap-md`, `px-md`). Without these the
+        // utilities silently produce no CSS — which was making cart item
+        // images sit flush against the text on mobile.
+        sm: '8px',
+        md: '12px',
+        lg: '16px',
+        xl: '24px',
       },
       boxShadow: {
         card: '0 4px 20px -2px rgba(0, 0, 0, 0.05)',

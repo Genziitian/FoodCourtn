@@ -40,8 +40,9 @@ interface FormState {
   area_name: string;
   is_open: boolean;
   welcome_text: string;
-  hero_image: string;       // legacy single image, kept for back-compat fallback
-  hero_images: string[];    // 0..5 image URLs for the customer carousel
+  hero_image: string;            // legacy single image, kept for back-compat fallback
+  hero_images: string[];         // Landing page carousel (welcome screen)
+  menu_hero_images: string[];    // Menu page header carousel (food close-ups)
   // settings jsonb
   settings: RestaurantSettings & {
     open_at?: string;
@@ -112,6 +113,7 @@ export default function Settings() {
         welcome_text: r.welcome_text ?? '',
         hero_image: r.hero_image ?? '',
         hero_images: Array.isArray(r.hero_images) ? r.hero_images : [],
+        menu_hero_images: Array.isArray(r.menu_hero_images) ? r.menu_hero_images : [],
         settings: { ...DEFAULT_SETTINGS, ...(res.settings ?? {}) },
       });
       setDirty(false);
@@ -136,9 +138,11 @@ export default function Settings() {
     if (!branch || !form) return;
     setSaving(true); setError(null);
     try {
-      // Clean the hero list: trim, drop empty rows, cap at 5. First valid URL
-      // is mirrored into hero_image so any legacy code paths still render.
-      const cleanHero = form.hero_images.map(s => s.trim()).filter(Boolean).slice(0, 5);
+      // Clean each hero list: trim, drop empty rows, cap at 5. First valid
+      // URL of the LANDING set is mirrored into hero_image so any legacy
+      // code paths still render.
+      const cleanLanding = form.hero_images.map(s => s.trim()).filter(Boolean).slice(0, 5);
+      const cleanMenu    = form.menu_hero_images.map(s => s.trim()).filter(Boolean).slice(0, 5);
       await updateBranch(branch.id, {
         name: form.name,
         slug: form.slug,
@@ -149,8 +153,9 @@ export default function Settings() {
         area_name: form.area_name,
         is_open: form.is_open,
         welcome_text: form.welcome_text || null,
-        hero_image: cleanHero[0] ?? (form.hero_image.trim() || null),
-        hero_images: cleanHero,
+        hero_image: cleanLanding[0] ?? (form.hero_image.trim() || null),
+        hero_images: cleanLanding,
+        menu_hero_images: cleanMenu,
         settings: form.settings,
       } as any);
       setDirty(false);
@@ -289,94 +294,114 @@ function ProfilePanel({ form, setR }: { form: FormState; setR: SetR }) {
   );
 }
 
+/**
+ * Reusable URL-list editor used for both the Landing carousel and the Menu
+ * header carousel. Up to 5 slots, with a live thumbnail beside each row.
+ */
+function HeroImagesEditor({
+  title, subtitle, values, onChange,
+}: {
+  title: string;
+  subtitle: string;
+  values: string[];
+  onChange: (next: string[]) => void;
+}) {
+  const setAt = (i: number, v: string) => {
+    const next = [...values]; next[i] = v; onChange(next);
+  };
+  const addSlot = () => {
+    if (values.length >= 5) return;
+    onChange([...values, '']);
+  };
+  const removeAt = (i: number) => onChange(values.filter((_, k) => k !== i));
+
+  const slots = values.length === 0 ? [''] : values;
+
+  return (
+    <Panel title={title} subtitle={subtitle}>
+      <div className="rounded-xl border border-amber-200 bg-amber-50/60 px-4 py-3 text-sm text-amber-900 flex items-start gap-3">
+        <ImageIcon className="size-4 mt-0.5 shrink-0" />
+        <p>Paste public image URLs (Unsplash, Cloudinary, Supabase Storage, etc.). Recommended size <strong>1600×900</strong>. Up to 5 images.</p>
+      </div>
+
+      <div className="space-y-2">
+        {slots.map((url, i) => (
+          <div key={i} className="flex items-center gap-2">
+            <div className="relative flex-1">
+              <span className="absolute left-2 top-1/2 -translate-y-1/2 size-6 grid place-items-center rounded text-[11px] font-bold bg-slate-200 text-slate-700">
+                {i + 1}
+              </span>
+              <Input
+                value={url}
+                onChange={e => setAt(i, e.target.value)}
+                placeholder="https://images.example.com/hero.jpg"
+                className="pl-10 font-mono text-xs"
+              />
+            </div>
+            {url && /^https?:\/\//i.test(url.trim()) ? (
+              <img
+                src={url}
+                alt={`Slide ${i + 1} preview`}
+                className="size-14 rounded-lg object-cover border border-slate-200 shrink-0"
+                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+              />
+            ) : (
+              <span className="size-14 rounded-lg border border-dashed border-slate-300 grid place-items-center text-slate-400 text-xs shrink-0">
+                preview
+              </span>
+            )}
+            {(values.length > 1 || (values.length === 1 && values[0])) && (
+              <button
+                type="button"
+                onClick={() => removeAt(i)}
+                className="size-9 grid place-items-center rounded-full text-slate-400 hover:bg-rose-50 hover:text-rose-600 shrink-0"
+                title="Remove this image"
+                aria-label="Remove"
+              >
+                ×
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
+
+      <div className="flex items-center justify-between gap-3 pt-1">
+        <p className="text-xs text-slate-500">
+          {values.length}/5 slots used · changes apply after you click <strong>Save changes</strong>.
+        </p>
+        <button
+          type="button"
+          onClick={addSlot}
+          disabled={values.length >= 5}
+          className="inline-flex items-center gap-1 rounded-full bg-white border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          <Plus className="size-3.5" /> Add slot
+        </button>
+      </div>
+    </Panel>
+  );
+}
+
 function BrandingPanel({
   form, setR, branchSlug,
 }: { form: FormState; setR: SetR; branchSlug: string }) {
   const customerUrl = (import.meta.env.VITE_CUSTOMER_URL as string | undefined)?.replace(/\/$/, '') || 'http://localhost:8081';
 
-  const setHeroAt = (i: number, v: string) => {
-    const next = [...form.hero_images];
-    next[i] = v;
-    setR('hero_images', next);
-  };
-  const addHeroSlot = () => {
-    if (form.hero_images.length >= 5) return;
-    setR('hero_images', [...form.hero_images, '']);
-  };
-  const removeHeroAt = (i: number) => {
-    setR('hero_images', form.hero_images.filter((_, k) => k !== i));
-  };
-
-  const slots = form.hero_images.length === 0 ? [''] : form.hero_images;
-
   return (
     <div className="space-y-6">
-      <Panel
-        title="Hero / feature images"
-        subtitle="These appear on the customer landing page, restaurant menu header, and login screen for this branch. The first image is also used as the legacy single hero image. Carousel auto-rotates every 4.5 seconds."
-      >
-        <div className="rounded-xl border border-amber-200 bg-amber-50/60 px-4 py-3 text-sm text-amber-900 flex items-start gap-3">
-          <ImageIcon className="size-4 mt-0.5 shrink-0" />
-          <p>
-            Paste public image URLs (Unsplash, Cloudinary, Supabase Storage, etc.). Recommended size <strong>1600×900</strong>. Up to 5 images.
-          </p>
-        </div>
+      <HeroImagesEditor
+        title="Landing page images"
+        subtitle="Full-screen carousel on the welcome page (the first screen after scanning a QR code). Wide cinematic shots work best. The first image is also used as the legacy single hero. Auto-rotates every 4.5s."
+        values={form.hero_images}
+        onChange={(next) => setR('hero_images', next)}
+      />
 
-        <div className="space-y-2">
-          {slots.map((url, i) => (
-            <div key={i} className="flex items-center gap-2">
-              <div className="relative flex-1">
-                <span className="absolute left-2 top-1/2 -translate-y-1/2 size-6 grid place-items-center rounded text-[11px] font-bold bg-slate-200 text-slate-700">
-                  {i + 1}
-                </span>
-                <Input
-                  value={url}
-                  onChange={e => setHeroAt(i, e.target.value)}
-                  placeholder="https://images.example.com/hero.jpg"
-                  className="pl-10 font-mono text-xs"
-                />
-              </div>
-              {url && /^https?:\/\//i.test(url.trim()) ? (
-                <img
-                  src={url}
-                  alt={`Slide ${i + 1} preview`}
-                  className="size-14 rounded-lg object-cover border border-slate-200 shrink-0"
-                  onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                />
-              ) : (
-                <span className="size-14 rounded-lg border border-dashed border-slate-300 grid place-items-center text-slate-400 text-xs shrink-0">
-                  preview
-                </span>
-              )}
-              {(form.hero_images.length > 1 || (form.hero_images.length === 1 && form.hero_images[0])) && (
-                <button
-                  type="button"
-                  onClick={() => removeHeroAt(i)}
-                  className="size-9 grid place-items-center rounded-full text-slate-400 hover:bg-rose-50 hover:text-rose-600 shrink-0"
-                  title="Remove this image"
-                  aria-label="Remove"
-                >
-                  ×
-                </button>
-              )}
-            </div>
-          ))}
-        </div>
-
-        <div className="flex items-center justify-between gap-3 pt-1">
-          <p className="text-xs text-slate-500">
-            {form.hero_images.length}/5 slots used · changes apply after you click <strong>Save changes</strong>.
-          </p>
-          <button
-            type="button"
-            onClick={addHeroSlot}
-            disabled={form.hero_images.length >= 5}
-            className="inline-flex items-center gap-1 rounded-full bg-white border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            <Plus className="size-3.5" /> Add slot
-          </button>
-        </div>
-      </Panel>
+      <HeroImagesEditor
+        title="Menu page images"
+        subtitle="Carousel inside the menu page header. Food close-ups and dish photos work best here. Leave empty to reuse your Landing page images."
+        values={form.menu_hero_images}
+        onChange={(next) => setR('menu_hero_images', next)}
+      />
 
       <Panel
         title="Welcome text"

@@ -55,7 +55,7 @@ export default function OrderHistory() {
         <button onClick={() => navigate(`${base}/profile`)} className="size-10 grid place-items-center rounded-full hover:bg-surface-container-high/50">
           <Icon name="arrow_back" size={22} className="text-primary" />
         </button>
-        <h1 className="font-display text-headline-md text-on-surface">Order history</h1>
+        <h1 className="font-display text-headline-md text-on-surface">Order Status</h1>
         <span className="w-10" />
       </header>
 
