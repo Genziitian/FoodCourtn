@@ -71,12 +71,14 @@ export function calculatePrice({
     applyTaxes && settings.service_charge_percent > 0
       ? (taxable * settings.service_charge_percent) / 100
       : 0;
-  // Packing / parcel charge is separate from the tax toggle: takeaway orders
-  // always include it so the kitchen recovers the cost of the box.
-  const packingCharge =
-    cart.order_type === 'takeaway' ? settings.packing_charge : 0;
+  // Packing / parcel charge is separate from the tax toggle: takeaway AND
+  // delivery orders include it so the kitchen recovers the cost of the box.
+  // Delivery orders additionally add `settings.delivery_fee` (a flat ₹ amount).
+  const isTakeawayLike = cart.order_type === 'takeaway' || cart.order_type === 'delivery';
+  const packingCharge = isTakeawayLike ? settings.packing_charge : 0;
+  const deliveryFee = cart.order_type === 'delivery' ? Number(settings.delivery_fee ?? 0) : 0;
 
-  const total = round2(taxable + tax + serviceCharge + packingCharge);
+  const total = round2(taxable + tax + serviceCharge + packingCharge + deliveryFee);
 
   return {
     subtotal: round2(subtotal),
@@ -86,6 +88,7 @@ export function calculatePrice({
     tax: round2(tax),
     service_charge: round2(serviceCharge),
     packing_charge: round2(packingCharge),
+    delivery_fee: round2(deliveryFee),
     total,
     applied_coupon: appliedCoupon,
   };

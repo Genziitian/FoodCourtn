@@ -5,6 +5,17 @@ import App from './App';
 import { SessionProvider } from './lib/session';
 import './index.css';
 
+// Register the PWA service worker so the admin app is installable on
+// desktop + Android. iOS doesn't need a SW for Add-to-Home-Screen.
+// Localhost is fine because the SW spec treats it as a secure origin.
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(err => {
+      console.warn('Service worker registration failed:', err);
+    });
+  });
+}
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <BrowserRouter>

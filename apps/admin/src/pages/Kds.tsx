@@ -465,11 +465,54 @@ function printKot(t: KotTicketWithOrder) {
   <script>window.onload = () => { window.print(); setTimeout(() => window.close(), 200) }</script>
 </body></html>`;
 
-  const w = window.open('', '_blank', 'width=380,height=600');
-  if (!w) { alert('Allow popups to print KOTs'); return; }
-  w.document.open();
-  w.document.write(html);
-  w.document.close();
+  // Strategy 1: open a small popup. Cleanest UX but popup-blockers in
+  // Chrome/Edge/Safari often kill it (it didn't come from a direct click
+  // event in some flows — e.g. status changes triggering an auto-print).
+  let popupOk = false;
+  try {
+    const w = window.open('', '_blank', 'width=380,height=600');
+    if (w) {
+      w.document.open();
+      w.document.write(html);
+      w.document.close();
+      popupOk = true;
+    }
+  } catch {
+    /* popup blocked */
+  }
+  if (popupOk) return;
+
+  // Strategy 2: hidden iframe in the current window. Works around popup
+  // blockers entirely. The iframe's onload triggers its own window.print()
+  // which the browser routes to the operator's default printer (the thermal
+  // printer on the kitchen tablet, when set as default).
+  const frame = document.createElement('iframe');
+  frame.style.position = 'fixed';
+  frame.style.right = '0';
+  frame.style.bottom = '0';
+  frame.style.width = '0';
+  frame.style.height = '0';
+  frame.style.border = '0';
+  frame.setAttribute('aria-hidden', 'true');
+  document.body.appendChild(frame);
+
+  const cleanup = () => { setTimeout(() => frame.remove(), 1500); };
+  frame.onload = () => {
+    try {
+      frame.contentWindow?.focus();
+      frame.contentWindow?.print();
+    } catch (e) {
+      console.warn('iframe print failed', e);
+      alert('Could not open the print dialog. Allow popups for this site to enable KOT printing.');
+    } finally {
+      cleanup();
+    }
+  };
+  const doc = frame.contentDocument;
+  if (!doc) { alert('Print not supported in this browser.'); frame.remove(); return; }
+  doc.open();
+  doc.write(html);
+  doc.close();
 }
 
 function escapeHtml(s: string): string {

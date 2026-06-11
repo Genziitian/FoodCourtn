@@ -3,8 +3,15 @@ import { cls } from '@foodcourt/shared';
 import { useCart } from '../lib/cart';
 import { Icon } from './Icon';
 
-type Tab = 'home' | 'menu' | 'cart' | 'profile';
+type Tab = 'home' | 'menu' | 'cart' | 'orders';
 
+/**
+ * Bottom navigation. The fourth slot intentionally is NOT "Profile" — the
+ * top-right ProfileBadge already covers profile access on every page, so the
+ * bottom nav reuses that slot for "Orders" (live order status + history).
+ * Tapping Orders lands on the same page as Profile → Order Status, just one
+ * tap shorter.
+ */
 export function BottomNav() {
   const { slug, qrToken } = useParams();
   const location = useLocation();
@@ -15,8 +22,8 @@ export function BottomNav() {
   const active: Tab =
     path.endsWith('/menu') ? 'menu' :
     path.includes('/cart') ? 'cart' :
-    path.includes('/order') ? 'cart' :
-    path.endsWith('/profile') ? 'profile' :
+    path.includes('/profile/orders') ? 'orders' :
+    path.includes('/order') ? 'orders' :
     'home';
 
   return (
@@ -25,10 +32,10 @@ export function BottomNav() {
       aria-label="Primary"
     >
       <div className="max-w-md mx-auto flex justify-around items-center px-2 pb-2">
-        <Tab to={base}             label="Home"    icon="home"            active={active === 'home'} />
-        <Tab to={`${base}/menu`}   label="Menu"    icon="restaurant_menu" active={active === 'menu'} />
-        <Tab to={`${base}/cart`}   label="Cart"    icon="shopping_cart"   active={active === 'cart'} badge={cartCount} />
-        <Tab to={`${base}/profile`} label="Profile" icon="person"         active={active === 'profile'} />
+        <Tab to={base}                        label="Home"   icon="home"            active={active === 'home'} />
+        <Tab to={`${base}/menu`}              label="Menu"   icon="restaurant_menu" active={active === 'menu'} />
+        <Tab to={`${base}/cart`}              label="Cart"   icon="shopping_cart"   active={active === 'cart'}   badge={cartCount} />
+        <Tab to={`${base}/profile/orders`}    label="Orders" icon="receipt_long"    active={active === 'orders'} />
       </div>
     </nav>
   );

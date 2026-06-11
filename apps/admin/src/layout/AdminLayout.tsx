@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import {
-  Bell, Calendar, ChevronDown, ChevronRight, CreditCard,
+  Bell, Calendar, Check as CheckIcon, ChevronDown, ChevronRight, CreditCard,
   Download, LayoutGrid, LogOut, MapPin, Monitor, RefreshCcw, Search,
   Settings, Shield, ShoppingBag, Tag, Coins, Utensils, QrCode, Users, UserCog,
   ChartBar, MessageSquare, Check,
@@ -297,9 +297,9 @@ function Topbar() {
         <Calendar className="size-4" />
         Today, 21 May
       </button>
-      <IconBtn><RefreshCcw className="size-4" /></IconBtn>
-      <IconBtn><Download className="size-4" /></IconBtn>
-      <IconBtn dot><Bell className="size-4" /></IconBtn>
+      <IconBtn onClick={() => window.location.reload()} title="Reload"><RefreshCcw className="size-4" /></IconBtn>
+      <InstallPwaButton />
+      <IconBtn dot title="Notifications"><Bell className="size-4" /></IconBtn>
       <TopbarAvatar />
     </header>
   );
@@ -352,14 +352,96 @@ function TopbarAvatar() {
   );
 }
 
-function IconBtn({ children, dot }: { children: React.ReactNode; dot?: boolean }) {
+function IconBtn({
+  children, dot, onClick, title, className,
+}: {
+  children: React.ReactNode;
+  dot?: boolean;
+  onClick?: () => void;
+  title?: string;
+  className?: string;
+}) {
   return (
-    <button className="relative size-9 grid place-items-center rounded-full hover:bg-slate-100">
+    <button
+      onClick={onClick}
+      title={title}
+      aria-label={title}
+      className={cls(
+        'relative size-9 grid place-items-center rounded-full hover:bg-slate-100',
+        className,
+      )}
+    >
       {children}
       {dot && <span className="absolute top-2 right-2 size-2 rounded-full bg-brand-500" />}
     </button>
   );
 }
 
+/**
+ * PWA install button. The Download icon in the topbar previously did nothing.
+ * Now it:
+ *   • Shows nothing when the app is already installed (running in standalone mode)
+ *   • Captures the browser's `beforeinstallprompt` event and surfaces it on tap
+ *   • Falls back to a helpful tip for iOS (Safari) which doesn't fire the event
+ *
+ * On Chrome/Edge/Android, tapping calls `prompt.prompt()` which shows the
+ * native install dialog. On iOS we tell the user how to "Add to Home Screen"
+ * via the share sheet — there is no programmatic install API on iOS today.
+ */
+function InstallPwaButton() {
+  const [deferred, setDeferred] = useState<any>(null);
+  const [installed, setInstalled] = useState(false);
+
+  useEffect(() => {
+    // Already installed → no button.
+    if (window.matchMedia('(display-mode: standalone)').matches) {
+      setInstalled(true);
+      return;
+    }
+    const onBeforeInstall = (e: any) => {
+      e.preventDefault();
+      setDeferred(e);
+    };
+    const onInstalled = () => { setInstalled(true); setDeferred(null); };
+    window.addEventListener('beforeinstallprompt', onBeforeInstall);
+    window.addEventListener('appinstalled', onInstalled);
+    return () => {
+      window.removeEventListener('beforeinstallprompt', onBeforeInstall);
+      window.removeEventListener('appinstalled', onInstalled);
+    };
+  }, []);
+
+  if (installed) return null;
+
+  const handleClick = async () => {
+    if (deferred) {
+      try {
+        deferred.prompt();
+        const choice = await deferred.userChoice;
+        if (choice?.outcome === 'accepted') setInstalled(true);
+      } catch (e) {
+        console.warn('Install prompt failed:', e);
+      } finally {
+        setDeferred(null);
+      }
+      return;
+    }
+    // No deferred event — likely iOS Safari, or the browser already showed
+    // the install prompt earlier and the user dismissed it.
+    const isIOS = /iPad|iPhone|iPod/i.test(navigator.userAgent);
+    if (isIOS) {
+      alert('To install on iPhone/iPad: tap the Share button in Safari and choose "Add to Home Screen".');
+    } else {
+      alert('Install is not available right now. In Chrome/Edge, look for the install icon in the address bar (▢ with ↓).');
+    }
+  };
+
+  return (
+    <IconBtn onClick={handleClick} title="Install FoodCourt Admin">
+      <Download className="size-4" />
+    </IconBtn>
+  );
+}
+
 // (suppress unused)
-export const _icons = { ChevronRight, MessageSquare };
+export const _icons = { CheckIcon, ChevronRight, MessageSquare };

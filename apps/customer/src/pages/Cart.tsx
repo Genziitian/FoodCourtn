@@ -9,6 +9,7 @@ import { Icon } from '../components/Icon';
 import { BottomNav } from '../components/BottomNav';
 import { getBranchPaymentKey, awardOrderCoins } from '../lib/api';
 import { openRazorpay } from '../lib/razorpay';
+import { distanceKm, useGeolocation } from '../lib/geo';
 
 export default function Cart() {
   const { slug, qrToken } = useParams();
@@ -33,6 +34,32 @@ export default function Cart() {
 
   const { customerId, user, refreshLoyalty } = useAuth();
   const coinsAvailable = user?.loyalty_balance ?? 0;
+
+  // ── Delivery: GPS + radius check ─────────────────────────────────────
+  // The restaurant opts into delivery from Admin → Settings → Delivery.
+  // The settings carry the restaurant's lat/lng and the allowed radius
+  // (km). When the customer flips the cart to Delivery, we ask for their
+  // location and compute the distance. Within radius → allow checkout;
+  // outside → block and show a friendly message.
+  const deliveryEnabled = restaurant?.settings?.delivery_enabled === true;
+  const deliveryLat = Number(restaurant?.settings?.delivery_lat ?? NaN);
+  const deliveryLng = Number(restaurant?.settings?.delivery_lng ?? NaN);
+  const restaurantHasLocation = Number.isFinite(deliveryLat) && Number.isFinite(deliveryLng);
+  const deliveryRadiusKm = Number(restaurant?.settings?.delivery_radius_km ?? 5);
+  const geo = useGeolocation();
+
+  const distanceFromRestaurant = useMemo(() => {
+    if (geo.state.status !== 'ready' || !restaurantHasLocation) return null;
+    return distanceKm(
+      { lat: geo.state.coords.lat, lng: geo.state.coords.lng },
+      { lat: deliveryLat, lng: deliveryLng },
+    );
+  }, [geo.state, deliveryLat, deliveryLng, restaurantHasLocation]);
+
+  const withinRadius = distanceFromRestaurant !== null && distanceFromRestaurant <= deliveryRadiusKm;
+  const deliveryBlocked =
+    cart.order_type === 'delivery' &&
+    (!restaurantHasLocation || geo.state.status !== 'ready' || !withinRadius);
 
   const breakdown = useMemo(() => {
     if (!restaurant) return null;
@@ -64,9 +91,16 @@ export default function Cart() {
 
   const [placeError, setPlaceError] = useState<string | null>(null);
 
-  // Toggle dine-in ↔ takeaway. Used by both the segmented control and the
-  // "Change" link on the context banner below it.
-  const toggleOrderType = () => setOrderType(cart.order_type === 'dine_in' ? 'takeaway' : 'dine_in');
+  // Cycle through enabled order types on the "Change" link of the context
+  // banner. Always Dine-In ↔ Takeaway; Delivery is only in the cycle when
+  // the restaurant has it enabled.
+  const toggleOrderType = () => {
+    const order: OrderType[] = deliveryEnabled
+      ? ['dine_in', 'takeaway', 'delivery']
+      : ['dine_in', 'takeaway'];
+    const i = order.indexOf(cart.order_type as OrderType);
+    setOrderType(order[(i + 1) % order.length]);
+  };
 
   // Header three-dot menu — clear cart with confirmation.
   const handleClearCart = () => {
@@ -93,6 +127,16 @@ export default function Cart() {
 
   const handlePlaceOrder = async () => {
     if (!restaurant || !breakdown || cart.lines.length === 0) return;
+    if (deliveryBlocked) {
+      setPlaceError(
+        !restaurantHasLocation
+          ? 'Delivery is unavailable for this branch right now.'
+          : geo.state.status !== 'ready'
+            ? 'Tap "Use my location" so we can confirm you\'re in our delivery area.'
+            : `Sorry — you're ${distanceFromRestaurant?.toFixed(1)} km away. We deliver within ${deliveryRadiusKm} km only.`,
+      );
+      return;
+    }
     setSubmitting(true);
     setPlaceError(null);
     try {
@@ -254,33 +298,55 @@ export default function Cart() {
       <main className="max-w-md md:max-w-2xl lg:max-w-6xl mx-auto px-container-margin lg:px-8 py-6 lg:grid lg:grid-cols-[1fr_360px] lg:gap-8 lg:items-start space-y-8 lg:space-y-0">
         {/* ── LEFT COLUMN ────────────────────────────────────────────── */}
         <div className="space-y-8 min-w-0">
-        {/* Order type segmented */}
+        {/* Order type segmented — 2-way (Dine-In/Takeaway) by default, 3-way
+            when the restaurant has delivery enabled in Admin → Settings. */}
         <section className="space-y-4">
-          <div className="bg-surface-container p-1 rounded-2xl flex relative h-12">
+          <div className={cls(
+            'bg-surface-container p-1 rounded-2xl grid relative h-12',
+            deliveryEnabled ? 'grid-cols-3' : 'grid-cols-2',
+          )}>
             <button
               onClick={() => setOrderType('dine_in')}
               className={cls(
-                'flex-1 z-10 font-semibold transition-colors flex items-center justify-center gap-2',
+                'z-10 font-semibold transition-colors flex items-center justify-center gap-2',
                 cart.order_type === 'dine_in' ? 'text-on-surface' : 'text-secondary',
               )}
             >
               <Icon name="restaurant" size={18} />
-              Dine-In
+              <span className="hidden xs:inline">Dine-In</span>
+              <span className="xs:hidden">Dine</span>
             </button>
             <button
               onClick={() => setOrderType('takeaway')}
               className={cls(
-                'flex-1 z-10 font-semibold transition-colors flex items-center justify-center gap-2',
+                'z-10 font-semibold transition-colors flex items-center justify-center gap-2',
                 cart.order_type === 'takeaway' ? 'text-on-surface' : 'text-secondary',
               )}
             >
               <Icon name="shopping_bag" size={18} />
               Takeaway
             </button>
+            {deliveryEnabled && (
+              <button
+                onClick={() => setOrderType('delivery')}
+                className={cls(
+                  'z-10 font-semibold transition-colors flex items-center justify-center gap-2',
+                  cart.order_type === 'delivery' ? 'text-on-surface' : 'text-secondary',
+                )}
+              >
+                <Icon name="delivery_dining" size={18} />
+                Delivery
+              </button>
+            )}
             <div
               className={cls(
-                'absolute top-1 w-[calc(50%-4px)] h-[calc(100%-8px)] bg-white rounded-xl shadow-soft transition-all',
-                cart.order_type === 'dine_in' ? 'left-1' : 'left-[50%]',
+                'absolute top-1 h-[calc(100%-8px)] bg-white rounded-xl shadow-soft transition-all',
+                deliveryEnabled ? 'w-[calc(33.333%-4px)]' : 'w-[calc(50%-4px)]',
+                deliveryEnabled
+                  ? cart.order_type === 'dine_in'   ? 'left-1'
+                  : cart.order_type === 'takeaway' ? 'left-[33.333%]'
+                  : 'left-[66.666%]'
+                  : cart.order_type === 'dine_in' ? 'left-1' : 'left-[50%]',
               )}
             />
           </div>
@@ -289,7 +355,11 @@ export default function Cart() {
           <div className="card p-5 flex items-center gap-md">
             <div className="size-12 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
               <Icon
-                name={cart.order_type === 'dine_in' ? 'location_on' : 'shopping_bag'}
+                name={
+                  cart.order_type === 'dine_in' ? 'location_on'
+                  : cart.order_type === 'delivery' ? 'delivery_dining'
+                  : 'shopping_bag'
+                }
                 size={24}
                 className="text-primary"
               />
@@ -298,10 +368,13 @@ export default function Cart() {
               <p className="font-semibold text-on-surface">
                 {cart.order_type === 'dine_in'
                   ? tableLabel ? `Dining at ${tableLabel}` : 'Dine-in'
+                  : cart.order_type === 'delivery' ? 'Delivery'
                   : 'Takeaway'}
               </p>
               <p className="text-label-sm text-secondary">
-                Ready in {restaurant.prep_time_min + 10}–{restaurant.prep_time_max + 10} mins
+                {cart.order_type === 'delivery'
+                  ? `Within ${deliveryRadiusKm} km of the restaurant`
+                  : `Ready in ${restaurant.prep_time_min + 10}–${restaurant.prep_time_max + 10} mins`}
               </p>
             </div>
             <button
@@ -311,6 +384,78 @@ export default function Cart() {
               Change
             </button>
           </div>
+
+          {/* Delivery area check — only when delivery is selected */}
+          {cart.order_type === 'delivery' && (
+            <div className="card p-5 space-y-3">
+              <div className="flex items-start gap-3">
+                <div className="size-10 grid place-items-center rounded-xl bg-primary/10 text-primary shrink-0">
+                  <Icon name="my_location" size={20} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-on-surface">Confirm your address</p>
+                  <p className="text-label-sm text-on-surface-variant">
+                    We deliver up to <strong>{deliveryRadiusKm} km</strong> from the restaurant.
+                  </p>
+                </div>
+              </div>
+
+              {!restaurantHasLocation && (
+                <p className="text-sm text-error font-medium bg-error-container/40 rounded-lg px-3 py-2">
+                  Delivery is configured but this branch hasn't set its location yet. Pick Dine-In or Takeaway.
+                </p>
+              )}
+
+              {restaurantHasLocation && geo.state.status === 'idle' && (
+                <button
+                  onClick={() => geo.request()}
+                  className="w-full rounded-2xl bg-primary text-on-primary font-semibold py-3 active:scale-[0.98] flex items-center justify-center gap-2"
+                >
+                  <Icon name="my_location" size={18} />
+                  Use my location
+                </button>
+              )}
+
+              {geo.state.status === 'requesting' && (
+                <p className="text-sm text-on-surface-variant flex items-center gap-2">
+                  <span className="size-4 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+                  Getting your location…
+                </p>
+              )}
+
+              {geo.state.status === 'denied' && (
+                <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-sm text-amber-900">
+                  <p className="font-semibold">Location permission denied.</p>
+                  <p className="text-xs mt-1">Enable location in your browser settings and reload, or choose Takeaway / Dine-In instead.</p>
+                </div>
+              )}
+
+              {geo.state.status === 'unavailable' && (
+                <p className="rounded-lg bg-error-container/40 px-3 py-2 text-sm text-error">
+                  {geo.state.reason}
+                </p>
+              )}
+
+              {geo.state.status === 'ready' && restaurantHasLocation && distanceFromRestaurant !== null && (
+                withinRadius ? (
+                  <div className="rounded-lg bg-success-tint border border-success/30 px-3 py-2 text-sm text-success-text flex items-center gap-2">
+                    <Icon name="check_circle" size={18} fill className="text-success" />
+                    <span>
+                      <strong>You're {distanceFromRestaurant.toFixed(1)} km away</strong>
+                      {' · '}within our {deliveryRadiusKm} km area.
+                    </span>
+                  </div>
+                ) : (
+                  <div className="rounded-lg bg-error-container/40 px-3 py-2 text-sm text-error space-y-1">
+                    <p className="font-semibold">
+                      You're {distanceFromRestaurant.toFixed(1)} km away — outside our {deliveryRadiusKm} km delivery area.
+                    </p>
+                    <p className="text-xs">Pick Takeaway or Dine-In, or order from a closer branch.</p>
+                  </div>
+                )
+              )}
+            </div>
+          )}
         </section>
 
         {empty ? (
@@ -397,9 +542,20 @@ export default function Cart() {
                       <span className="font-medium inline-flex items-center gap-1.5">
                         <Icon name="shopping_bag" size={14} className="text-on-surface-variant" />
                         Parcel Charge
-                        <span className="text-[10px] uppercase font-bold tracking-wider bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">Included · Takeaway</span>
+                        <span className="text-[10px] uppercase font-bold tracking-wider bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">
+                          {cart.order_type === 'delivery' ? 'Included · Delivery' : 'Included · Takeaway'}
+                        </span>
                       </span>
                       <span className="text-on-surface font-semibold">{inr(breakdown.packing_charge)}</span>
+                    </div>
+                  )}
+                  {(breakdown.delivery_fee ?? 0) > 0 && (
+                    <div className="flex justify-between text-secondary">
+                      <span className="font-medium inline-flex items-center gap-1.5">
+                        <Icon name="delivery_dining" size={14} className="text-on-surface-variant" />
+                        Delivery Fee
+                      </span>
+                      <span className="text-on-surface font-semibold">{inr(breakdown.delivery_fee ?? 0)}</span>
                     </div>
                   )}
                   {totalSavings > 0 && (

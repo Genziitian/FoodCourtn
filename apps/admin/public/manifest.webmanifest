@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json.schemastore.org/web-manifest-combined.json",
+  "name": "FoodCourt Admin",
+  "short_name": "FoodCourt",
+  "description": "Run your restaurant — orders, KDS, menu, payments, reports.",
+  "start_url": "/dashboard",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#f8fafc",
+  "theme_color": "#b7122a",
+  "lang": "en-IN",
+  "icons": [
+    {
+      "src": "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect width='192' height='192' rx='42' fill='%23b7122a'/><text x='96' y='130' font-family='system-ui' font-size='112' font-weight='800' text-anchor='middle' fill='white'>F</text></svg>",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'><rect width='512' height='512' rx='112' fill='%23b7122a'/><text x='256' y='346' font-family='system-ui' font-size='300' font-weight='800' text-anchor='middle' fill='white'>F</text></svg>",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
-  Bell, Building2, ChefHat, Clock, CreditCard, IndianRupee, Image as ImageIcon, Palette, Plus, Save,
-  Shield, Smartphone, Wallet, Check, RefreshCcw,
+  Bell, Building2, ChefHat, Clock, CreditCard, IndianRupee, Image as ImageIcon, MapPin, Palette, Plus, Save,
+  Shield, Smartphone, Truck, Wallet, Check, RefreshCcw,
 } from 'lucide-react';
 import type { PaymentProvider, RestaurantSettings } from '@foodcourt/shared';
 import { cls } from '@foodcourt/shared';
@@ -16,7 +16,7 @@ import {
 
 type TabKey =
   | 'profile' | 'branding' | 'tax' | 'kot' | 'hours'
-  | 'payments' | 'loyalty' | 'notifications';
+  | 'payments' | 'loyalty' | 'delivery' | 'notifications';
 
 const TABS: Array<{ key: TabKey; label: string; icon: any }> = [
   { key: 'profile',       label: 'Restaurant profile', icon: Building2 },
@@ -24,6 +24,7 @@ const TABS: Array<{ key: TabKey; label: string; icon: any }> = [
   { key: 'tax',           label: 'Tax & Charges',      icon: IndianRupee },
   { key: 'kot',           label: 'Orders & KOT',       icon: ChefHat },
   { key: 'hours',         label: 'Business hours',     icon: Clock },
+  { key: 'delivery',      label: 'Delivery',           icon: Truck },
   { key: 'payments',      label: 'Payments',           icon: CreditCard },
   { key: 'loyalty',       label: 'Loyalty',            icon: Shield },
   { key: 'notifications', label: 'Notifications',      icon: Bell },
@@ -80,6 +81,11 @@ const DEFAULT_SETTINGS: FormState['settings'] = {
   loyalty_earn_rate: 5,
   loyalty_max_redeem_percent: 10,
   apply_taxes_and_charges: true,
+  delivery_enabled: false,
+  delivery_radius_km: 5,
+  delivery_lat: null,
+  delivery_lng: null,
+  delivery_fee: 0,
   open_at: '09:00',
   close_at: '23:00',
   hours_weekly: defaultWeeklyHours(),
@@ -226,6 +232,7 @@ export default function Settings() {
             {active === 'hours'         && <HoursPanel form={form} setS={setS} setR={setR} />}
             {active === 'payments'      && <PaymentsPanel branchId={branch.id} />}
             {active === 'loyalty'       && <LoyaltyPanel form={form} setS={setS} />}
+            {active === 'delivery'      && <DeliveryPanel form={form} setS={setS} />}
             {active === 'notifications' && <NotificationsPanel form={form} setS={setS} />}
           </div>
         </div>
@@ -826,6 +833,144 @@ function LoyaltyPanel({ form, setS }: { form: FormState; setS: SetS }) {
         </Field>
       </div>
     </Panel>
+  );
+}
+
+/**
+ * Delivery settings panel.
+ *
+ * Three pieces:
+ *   1. Master toggle — when off, the customer cart hides the Delivery tab entirely.
+ *   2. Restaurant location (lat/lng) — used for the radius gate. "Use my
+ *      current location" fills it from the operator's device, which is the
+ *      easiest way to get the right coords for the branch.
+ *   3. Radius (km) + flat delivery fee — used in the customer pricing.
+ */
+function DeliveryPanel({ form, setS }: { form: FormState; setS: SetS }) {
+  const enabled = form.settings.delivery_enabled === true;
+  const lat = form.settings.delivery_lat ?? null;
+  const lng = form.settings.delivery_lng ?? null;
+  const [locating, setLocating] = useState(false);
+  const [locateErr, setLocateErr] = useState<string | null>(null);
+
+  const useMyLocation = () => {
+    if (!navigator?.geolocation) {
+      setLocateErr('Your browser does not support location services.');
+      return;
+    }
+    setLocating(true); setLocateErr(null);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setS('delivery_lat', Number(pos.coords.latitude.toFixed(6)));
+        setS('delivery_lng', Number(pos.coords.longitude.toFixed(6)));
+        setLocating(false);
+      },
+      (err) => {
+        setLocateErr(err.code === err.PERMISSION_DENIED
+          ? 'Location permission denied. Type the latitude and longitude manually below.'
+          : (err.message ?? 'Could not get location.'));
+        setLocating(false);
+      },
+      { enableHighAccuracy: true, timeout: 15000 },
+    );
+  };
+
+  return (
+    <div className="space-y-6">
+      <Panel
+        title="Delivery"
+        subtitle="Take orders for delivery. Customers see a Delivery tab on the cart; we check their GPS against your radius before they can pay. Delivery status is updated manually from Orders for now."
+      >
+        <Toggle
+          checked={enabled}
+          onChange={v => setS('delivery_enabled', v)}
+          label="Enable delivery for this branch"
+          description="When off, customers only see Dine-In and Takeaway."
+        />
+      </Panel>
+
+      <Panel
+        title="Restaurant location"
+        subtitle="Used to check whether a customer is within your delivery radius. Tap “Use my current location” while standing at the restaurant for the easiest setup."
+      >
+        <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900 flex items-start gap-3">
+          <MapPin className="size-4 mt-0.5 shrink-0" />
+          <div>
+            <p className="font-semibold">Tip</p>
+            <p>You can also paste coordinates from Google Maps — right-click the spot on the map, the first option in the popup is the lat,lng pair.</p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={useMyLocation}
+            disabled={locating}
+            className="inline-flex items-center gap-2 rounded-full bg-brand-600 text-white px-4 py-2 text-sm font-semibold hover:bg-brand-700 disabled:opacity-50"
+          >
+            <MapPin className="size-4" />
+            {locating ? 'Getting location…' : 'Use my current location'}
+          </button>
+          {(lat !== null && lng !== null) && (
+            <span className="text-xs text-slate-500">
+              Set to <span className="font-mono">{Number(lat).toFixed(5)}, {Number(lng).toFixed(5)}</span>
+            </span>
+          )}
+        </div>
+        {locateErr && <p className="text-sm text-rose-700 bg-rose-50 rounded-lg px-3 py-2">{locateErr}</p>}
+
+        <div className="grid grid-cols-2 gap-4">
+          <Field label="Latitude" hint="-90 to 90">
+            <Input
+              type="number" step="0.000001" min={-90} max={90}
+              value={lat ?? ''}
+              onChange={e => setS('delivery_lat', e.target.value === '' ? null : Number(e.target.value))}
+              placeholder="12.972442"
+              className="font-mono text-sm"
+            />
+          </Field>
+          <Field label="Longitude" hint="-180 to 180">
+            <Input
+              type="number" step="0.000001" min={-180} max={180}
+              value={lng ?? ''}
+              onChange={e => setS('delivery_lng', e.target.value === '' ? null : Number(e.target.value))}
+              placeholder="77.580643"
+              className="font-mono text-sm"
+            />
+          </Field>
+        </div>
+      </Panel>
+
+      <Panel
+        title="Radius & fee"
+        subtitle="The hard ceiling we use to refuse orders outside your delivery zone."
+      >
+        <div className="grid grid-cols-2 gap-4">
+          <Field label="Delivery radius (km)" hint="Default 5 km.">
+            <div className="relative">
+              <Input
+                type="number" min={0.5} max={50} step="0.1"
+                value={form.settings.delivery_radius_km ?? 5}
+                onChange={e => setS('delivery_radius_km', Number(e.target.value))}
+                className="pr-12"
+              />
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 text-sm">km</span>
+            </div>
+          </Field>
+          <Field label="Delivery fee (flat)" hint="Added on top of every delivery order, in addition to the parcel charge.">
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-sm">₹</span>
+              <Input
+                type="number" min={0} step="1"
+                value={form.settings.delivery_fee ?? 0}
+                onChange={e => setS('delivery_fee', Number(e.target.value))}
+                className="pl-7"
+              />
+            </div>
+          </Field>
+        </div>
+      </Panel>
+    </div>
   );
 }
 

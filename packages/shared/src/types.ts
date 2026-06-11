@@ -2,7 +2,7 @@
 // Keep these in sync manually for now; later, generate with `supabase gen types`.
 
 export type FoodType = 'veg' | 'non_veg' | 'egg';
-export type OrderType = 'dine_in' | 'takeaway';
+export type OrderType = 'dine_in' | 'takeaway' | 'delivery';
 export type OrderStatus = 'received' | 'preparing' | 'ready' | 'completed' | 'cancelled';
 export type PaymentStatus = 'pending' | 'success' | 'failed' | 'refunded' | 'counter';
 export type StaffRole = 'owner' | 'manager' | 'cashier' | 'kitchen' | 'waiter';
@@ -24,6 +24,12 @@ export interface RestaurantSettings {
   // — neither added to the total nor shown on the customer bill summary. The
   // packing/parcel charge on takeaway is unaffected. Defaults to true.
   apply_taxes_and_charges?: boolean;
+  // ── Delivery (manual-update, GPS-gated) ───────────────────────────────
+  delivery_enabled?: boolean;       // master switch: when false the Delivery tab is hidden
+  delivery_radius_km?: number;      // default 5; customers outside the radius see "out of area"
+  delivery_lat?: number | null;     // restaurant latitude — used for the radius check
+  delivery_lng?: number | null;     // restaurant longitude
+  delivery_fee?: number;            // flat ₹ charge added to delivery orders
 }
 
 export interface Restaurant {
@@ -240,6 +246,7 @@ export interface PriceBreakdown {
   tax: number;
   service_charge: number;
   packing_charge: number;
+  delivery_fee?: number;        // only present on delivery orders
   total: number;
   applied_coupon: Coupon | null;
 }
