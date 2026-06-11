@@ -7,6 +7,8 @@ import { cls, elapsedMinSec, type KotStatus } from '@foodcourt/shared';
 import { PageHeader } from '../components/PageHeader';
 import { FullscreenButton, useFullscreen } from '../components/FullscreenToggle';
 import { useTenant } from '../lib/tenant';
+import { printKot as sharedPrintKot, type KotPrintInput } from '../lib/printKot';
+type KotPrintItem = KotPrintInput['items'][number];
 import {
   listKotTickets, listKotHistory, subscribeToKots,
   updateKotStatus, incrementReprintCount,
@@ -419,102 +421,17 @@ function capitalize(s: string) {
 }
 
 function printKot(t: KotTicketWithOrder) {
+  // Delegate to the shared helper so KDS + Orders print identically.
   const tableLabel = t.table_label_db ?? t.payload?.table_label ?? null;
   const customerName = t.customer_name_db ?? t.payload?.customer_name ?? null;
-  const items = (t.payload?.items ?? []) as Array<{ name: string; variant: string | null; modifiers: string[]; qty: number; notes?: string }>;
-
-  const html = `<!doctype html>
-<html><head><title>${t.ticket_no}</title>
-<style>
-  @page { size: 80mm auto; margin: 4mm }
-  body { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; color: #000; }
-  h1 { font-size: 18px; margin: 0 0 4px; text-align: center; letter-spacing: 1px }
-  .meta { text-align: center; font-size: 11px; margin-bottom: 6px; line-height: 1.4 }
-  hr { border: 0; border-top: 1px dashed #000; margin: 8px 0 }
-  .row { display: flex; justify-content: space-between; gap: 8px; padding: 2px 0 }
-  .qty { font-weight: 700; flex: 0 0 28px }
-  .name { flex: 1; }
-  .note { padding-left: 32px; font-size: 11px; font-style: italic }
-  .footer { margin-top: 8px; text-align: center; font-size: 11px; opacity: .8 }
-</style></head>
-<body>
-  <h1>${t.ticket_no}</h1>
-  <div class="meta">
-    ${t.order_code ? t.order_code + ' · ' : ''}
-    ${t.payload?.order_type === 'dine_in' ? (tableLabel ?? 'Dine-in') : 'Takeaway'}
-    ${customerName ? '<br>' + escapeHtml(customerName) : ''}
-    <br>${new Date(t.created_at).toLocaleString('en-IN')}
-  </div>
-  <hr>
-  ${items.map(it => `
-    <div class="row">
-      <span class="qty">×${it.qty}</span>
-      <span class="name">
-        <strong>${escapeHtml(it.name)}</strong>
-        ${it.variant ? ' · ' + escapeHtml(it.variant) : ''}
-      </span>
-    </div>
-    ${(it.modifiers ?? []).length ? `<div class="note">+ ${it.modifiers.map(escapeHtml).join(', ')}</div>` : ''}
-    ${it.notes ? `<div class="note">"${escapeHtml(it.notes)}"</div>` : ''}
-  `).join('')}
-  <hr>
-  <div class="footer">
-    ${items.reduce((s, it) => s + it.qty, 0)} items total
-    ${(t.reprint_count ?? 0) > 0 ? `<br>REPRINT #${(t.reprint_count ?? 0) + 1}` : ''}
-  </div>
-  <script>window.onload = () => { window.print(); setTimeout(() => window.close(), 200) }</script>
-</body></html>`;
-
-  // Strategy 1: open a small popup. Cleanest UX but popup-blockers in
-  // Chrome/Edge/Safari often kill it (it didn't come from a direct click
-  // event in some flows — e.g. status changes triggering an auto-print).
-  let popupOk = false;
-  try {
-    const w = window.open('', '_blank', 'width=380,height=600');
-    if (w) {
-      w.document.open();
-      w.document.write(html);
-      w.document.close();
-      popupOk = true;
-    }
-  } catch {
-    /* popup blocked */
-  }
-  if (popupOk) return;
-
-  // Strategy 2: hidden iframe in the current window. Works around popup
-  // blockers entirely. The iframe's onload triggers its own window.print()
-  // which the browser routes to the operator's default printer (the thermal
-  // printer on the kitchen tablet, when set as default).
-  const frame = document.createElement('iframe');
-  frame.style.position = 'fixed';
-  frame.style.right = '0';
-  frame.style.bottom = '0';
-  frame.style.width = '0';
-  frame.style.height = '0';
-  frame.style.border = '0';
-  frame.setAttribute('aria-hidden', 'true');
-  document.body.appendChild(frame);
-
-  const cleanup = () => { setTimeout(() => frame.remove(), 1500); };
-  frame.onload = () => {
-    try {
-      frame.contentWindow?.focus();
-      frame.contentWindow?.print();
-    } catch (e) {
-      console.warn('iframe print failed', e);
-      alert('Could not open the print dialog. Allow popups for this site to enable KOT printing.');
-    } finally {
-      cleanup();
-    }
-  };
-  const doc = frame.contentDocument;
-  if (!doc) { alert('Print not supported in this browser.'); frame.remove(); return; }
-  doc.open();
-  doc.write(html);
-  doc.close();
-}
-
-function escapeHtml(s: string): string {
-  return s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
+  return sharedPrintKot({
+    ticket_no: t.ticket_no,
+    order_code: t.order_code ?? null,
+    order_type: t.payload?.order_type ?? null,
+    table_label: tableLabel,
+    customer_name: customerName,
+    created_at: t.created_at,
+    reprint_count: t.reprint_count ?? 0,
+    items: (t.payload?.items ?? []) as KotPrintItem[],
+  });
 }

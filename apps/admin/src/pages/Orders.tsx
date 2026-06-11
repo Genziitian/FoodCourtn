@@ -4,6 +4,7 @@ import {
   Printer, RotateCcw, Search, ShoppingBag, Utensils, X,
 } from 'lucide-react';
 import { cls, inr } from '@foodcourt/shared';
+import { printKot as sharedPrintKot } from '../lib/printKot';
 import { OrderStatusPill, PaymentStatusPill, TypePill } from '../components/StatusPill';
 import { Drawer } from '../components/Drawer';
 import { PageHeader } from '../components/PageHeader';
@@ -111,8 +112,31 @@ export default function Orders() {
     try { await cancelOrder(id); } catch { refetch(); }
   };
 
-  const reprint = (_id: string) => {
-    alert('KOT sent to printer (reprint). Wire to printer service in Phase 2.');
+  const reprint = (id: string) => {
+    const o = orders.find(x => x.id === id);
+    if (!o) return;
+    // We don't have a KOT ticket row directly here, but the order carries
+    // everything we need to render the same 80mm thermal receipt that KDS
+    // prints. Use the order code as the ticket number — that's what most
+    // kitchens already reference verbally ("table 12, FC-100036"), and it
+    // tells the customer that this is a reprint of their order if they
+    // ever see it.
+    sharedPrintKot({
+      ticket_no: o.code,
+      order_code: o.code,
+      order_type: o.type,
+      table_label: o.table_label,
+      customer_name: o.customer_name,
+      created_at: o.created_at,
+      reprint_count: 1,
+      items: (o.items ?? []).map(it => ({
+        name: it.name,
+        variant: it.variant ?? null,
+        modifiers: [],   // AdminOrder.items doesn't carry modifiers; KOT shows the line as-is
+        qty: it.qty,
+        notes: it.notes ?? null,
+      })),
+    });
   };
 
   const openOrder = orders.find(o => o.id === openOrderId) ?? null;
