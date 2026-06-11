@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import type { OrderStatus } from '@foodcourt/shared';
 import { cls, inr } from '@foodcourt/shared';
 import { Icon } from '../components/Icon';
@@ -20,13 +20,27 @@ const STATUS_STYLE: Record<OrderStatus, { bg: string; text: string; label: strin
 export default function OrderHistory() {
   const { slug, qrToken } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const base = qrToken ? `/${slug}/t/${qrToken}` : `/${slug ?? 'the-spice-route'}`;
 
   const { customerId } = useAuth();
   const { orders, loading } = useOrderHistory(customerId);
 
-  const [filter, setFilter] = useState<StatusFilter>('all');
+  // Initial filter from URL — bottom nav "Order Menu" tab links here with
+  // `?filter=active` (live orders only); the Profile "Order History" row
+  // links here with `?filter=all`. Falls back to 'all' if absent / unknown.
+  const initialFilter = ((): StatusFilter => {
+    const f = searchParams.get('filter');
+    if (f === 'active' || f === 'all' || f === 'received' || f === 'preparing' || f === 'ready' || f === 'completed' || f === 'cancelled') {
+      return f;
+    }
+    return 'all';
+  })();
+  const [filter, setFilter] = useState<StatusFilter>(initialFilter);
   const [query, setQuery] = useState('');
+
+  // Title reflects the mode: "Order Menu" for live/active, "Order History" otherwise.
+  const pageTitle = filter === 'active' ? 'Order Menu' : 'Order History';
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -55,7 +69,7 @@ export default function OrderHistory() {
         <button onClick={() => navigate(`${base}/profile`)} className="size-10 grid place-items-center rounded-full hover:bg-surface-container-high/50">
           <Icon name="arrow_back" size={22} className="text-primary" />
         </button>
-        <h1 className="font-display text-headline-md text-on-surface">Order Status</h1>
+        <h1 className="font-display text-headline-md text-on-surface">{pageTitle}</h1>
         <span className="w-10" />
       </header>
 
@@ -122,48 +136,55 @@ export default function OrderHistory() {
             {filtered.map(o => {
               const s = STATUS_STYLE[o.status];
               const ageMin = Math.max(0, Math.floor((Date.now() - new Date(o.created_at).getTime()) / 60000));
+              const orderTypeLabel =
+                o.type === 'dine_in'  ? `Dine-in${(o as any).table_label ? ' · ' + (o as any).table_label : ''}`
+                : o.type === 'delivery' ? 'Delivery'
+                : 'Takeaway';
               return (
-                <li key={o.id}>
-                  <button
-                    onClick={() => navigate(`${base}/order/${o.code}`)}
-                    className="w-full text-left card p-4 hover:bg-surface-container-low transition active:scale-[0.99]"
-                  >
-                    <div className="flex items-start justify-between gap-3 mb-2">
-                      <div className="min-w-0">
-                        <p className="font-mono font-bold text-on-surface">{o.code}</p>
-                        <p className="text-label-sm text-on-surface-variant capitalize">
-                          {o.type === 'dine_in'
-                            ? `Dine-in${(o as any).table_label ? ' · ' + (o as any).table_label : ''}`
-                            : 'Takeaway'}
-                        </p>
-                      </div>
-                      <span className={cls('inline-flex items-center rounded-full px-2.5 py-1 text-xs font-bold', s.bg, s.text)}>
-                        {s.label}
-                      </span>
+                <li key={o.id} className="card p-4 space-y-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="font-mono font-bold text-on-surface">{o.code}</p>
+                      <p className="text-label-sm text-on-surface-variant capitalize">{orderTypeLabel}</p>
                     </div>
+                    <span className={cls('inline-flex items-center rounded-full px-2.5 py-1 text-xs font-bold shrink-0', s.bg, s.text)}>
+                      {s.label}
+                    </span>
+                  </div>
 
-                    <p className="text-sm text-on-surface line-clamp-2">
-                      {(o.items ?? []).map(i => `${i.qty}× ${i.item_name}`).join(' · ') || '—'}
-                    </p>
+                  <p className="text-sm text-on-surface line-clamp-2">
+                    {(o.items ?? []).map(i => `${i.qty}× ${i.item_name}`).join(' · ') || '—'}
+                  </p>
 
-                    <div className="mt-3 pt-3 border-t border-outline-variant/20 flex items-center justify-between text-sm">
-                      <span className="text-on-surface-variant inline-flex items-center gap-1.5">
-                        <Icon name="schedule" size={14} />
-                        {formatAge(ageMin)}
-                      </span>
-                      <span className="font-bold text-on-surface">{inr(Number(o.total))}</span>
-                    </div>
+                  <div className="pt-3 border-t border-outline-variant/20 flex items-center justify-between text-sm">
+                    <span className="text-on-surface-variant inline-flex items-center gap-1.5">
+                      <Icon name="schedule" size={14} />
+                      {formatAge(ageMin)}
+                    </span>
+                    <span className="font-bold text-on-surface">{inr(Number(o.total))}</span>
+                  </div>
 
+                  {/* Action row — explicit "View details" button for every order
+                      (request: each order should have a button to open details).
+                      Completed orders also get a quick Reorder link. */}
+                  <div className="flex items-center gap-2 pt-1">
+                    <button
+                      onClick={() => navigate(`${base}/order/${o.code}`)}
+                      className="flex-1 rounded-xl bg-primary text-on-primary font-semibold text-label-bold py-2 inline-flex items-center justify-center gap-1.5 active:scale-95"
+                    >
+                      <Icon name="visibility" size={16} />
+                      View details
+                    </button>
                     {o.status === 'completed' && (
-                      <div
-                        onClick={(e) => { e.stopPropagation(); reorder(o.code); }}
-                        className="mt-3 -mb-1 inline-flex items-center gap-2 text-primary text-label-sm font-semibold"
+                      <button
+                        onClick={() => reorder(o.code)}
+                        className="rounded-xl border border-outline-variant/40 bg-surface-container-lowest text-primary font-semibold text-label-bold px-3 py-2 inline-flex items-center justify-center gap-1.5 active:scale-95"
                       >
-                        <Icon name="refresh" size={14} />
+                        <Icon name="refresh" size={16} />
                         Reorder
-                      </div>
+                      </button>
                     )}
-                  </button>
+                  </div>
                 </li>
               );
             })}

@@ -120,9 +120,9 @@ export default function Profile() {
         <Group title="Account">
           <Row
             icon="receipt_long"
-            label="Order Status"
+            label="Order History"
             sub={`${user.total_orders} past orders`}
-            onClick={() => navigate(`${base}/profile/orders`)}
+            onClick={() => navigate(`${base}/profile/orders?filter=all`)}
             badge={cartCount > 0 ? `${cartCount} in cart` : undefined}
           />
           <Row

@@ -86,10 +86,18 @@ export default {
         DEFAULT: '0.5rem',
         md: '0.75rem',
         lg: '1rem',
-        xl: '1.5rem',
-        '2xl': '1.5rem',
-        '3xl': '2rem',
-        pill: '9999px',
+        xl: '1.25rem',
+        '2xl': '1.25rem',
+        '3xl': '1.5rem',
+        // `pill` used to be 9999px (fully rounded). Per design feedback we
+        // dialled this back to ~14px so primary CTAs and chips read as
+        // "rounded buttons" instead of stadium shapes. Tiny dots / status
+        // indicators (size ≤ 28px) still appear as perfect circles because
+        // their natural radius is smaller than 14px.
+        pill: '14px',
+        // `round` keeps the true 9999px shape for the rare element that
+        // genuinely needs it (avatars, dots when explicit, etc.)
+        round: '9999px',
       },
       spacing: {
         'container-margin': '16px',

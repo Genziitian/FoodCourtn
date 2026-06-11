@@ -71,11 +71,26 @@ export function calculatePrice({
     applyTaxes && settings.service_charge_percent > 0
       ? (taxable * settings.service_charge_percent) / 100
       : 0;
-  // Packing / parcel charge is separate from the tax toggle: takeaway AND
-  // delivery orders include it so the kitchen recovers the cost of the box.
-  // Delivery orders additionally add `settings.delivery_fee` (a flat ₹ amount).
+  // Packing / parcel charge for takeaway AND delivery orders.
+  //
+  // Two ways to charge:
+  //   1. Per-item parcel charge — preferred. Each menu_items row carries an
+  //      optional `parcel_charge` (₹ per unit). When the customer adds a
+  //      Half Biryani (parcel ₹15) + a Gulab Jamun (parcel ₹5) and goes
+  //      Takeaway, parcel = 15*qty + 5*qty.
+  //   2. Flat fallback — `settings.packing_charge`. Used only when NO line
+  //      in the cart has a per-unit parcel charge configured (older menus
+  //      that haven't been touched since this column was added).
   const isTakeawayLike = cart.order_type === 'takeaway' || cart.order_type === 'delivery';
-  const packingCharge = isTakeawayLike ? settings.packing_charge : 0;
+  const perItemParcelSum = cart.lines.reduce(
+    (s, l) => s + (Number(l.parcel_charge_per_unit ?? 0) * l.qty),
+    0,
+  );
+  const packingCharge = !isTakeawayLike
+    ? 0
+    : perItemParcelSum > 0
+      ? perItemParcelSum
+      : settings.packing_charge;
   const deliveryFee = cart.order_type === 'delivery' ? Number(settings.delivery_fee ?? 0) : 0;
 
   const total = round2(taxable + tax + serviceCharge + packingCharge + deliveryFee);

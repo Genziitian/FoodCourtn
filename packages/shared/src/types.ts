@@ -168,6 +168,7 @@ export interface MenuItem {
   image_url: string | null;
   base_price: number;
   mrp: number | null;           // pre-discount price for strike-through
+  parcel_charge?: number;       // per-unit parcel/packing fee added on takeaway+delivery; defaults to 0
   food_type: FoodType;
   rating: number;
   rating_count: number;
@@ -226,6 +227,7 @@ export interface CartLine {
   qty: number;
   unit_price: number;          // variant price + modifiers
   line_total: number;
+  parcel_charge_per_unit?: number;   // copied from menu_items.parcel_charge; used on takeaway/delivery
   notes?: string;
 }
 

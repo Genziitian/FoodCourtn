@@ -19,11 +19,15 @@ export function BottomNav() {
 
   const base = qrToken ? `/${slug}/t/${qrToken}` : `/${slug ?? 'the-spice-route'}`;
   const path = location.pathname;
+  const search = location.search;
+  // "Order Menu" is the live-orders view (only active orders). It links to
+  // /profile/orders?filter=active so the OrderHistory page filters itself.
+  const onOrderMenu = path.includes('/profile/orders') && search.includes('filter=active');
+  const onAnyOrderPage = path.includes('/profile/orders') || path.includes('/order/');
   const active: Tab =
     path.endsWith('/menu') ? 'menu' :
     path.includes('/cart') ? 'cart' :
-    path.includes('/profile/orders') ? 'orders' :
-    path.includes('/order') ? 'orders' :
+    onOrderMenu || onAnyOrderPage ? 'orders' :
     'home';
 
   return (
@@ -32,10 +36,10 @@ export function BottomNav() {
       aria-label="Primary"
     >
       <div className="max-w-md mx-auto flex justify-around items-center px-2 pb-2">
-        <Tab to={base}                        label="Home"   icon="home"            active={active === 'home'} />
-        <Tab to={`${base}/menu`}              label="Menu"   icon="restaurant_menu" active={active === 'menu'} />
-        <Tab to={`${base}/cart`}              label="Cart"   icon="shopping_cart"   active={active === 'cart'}   badge={cartCount} />
-        <Tab to={`${base}/profile/orders`}    label="Orders" icon="receipt_long"    active={active === 'orders'} />
+        <Tab to={base}                                      label="Home"        icon="home"            active={active === 'home'} />
+        <Tab to={`${base}/menu`}                            label="Menu"        icon="restaurant_menu" active={active === 'menu'} />
+        <Tab to={`${base}/cart`}                            label="Cart"        icon="shopping_cart"   active={active === 'cart'}   badge={cartCount} />
+        <Tab to={`${base}/profile/orders?filter=active`}    label="Order Menu"  icon="receipt_long"    active={active === 'orders'} />
       </div>
     </nav>
   );

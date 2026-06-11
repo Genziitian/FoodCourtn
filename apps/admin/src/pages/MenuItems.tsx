@@ -350,6 +350,7 @@ export default function MenuItems() {
     description: '',
     image_url: null,
     base_price: 0,
+    parcel_charge: 0,
     food_type: 'veg',
     rating: 0,
     rating_count: 0,
@@ -815,6 +816,8 @@ function ItemEditorInner({
           is_recommended: draft.is_recommended,
           in_stock: draft.in_stock,
           sort_order: draft.sort_order,
+        }, {
+          parcel_charge: draft.parcel_charge ?? 0,
         });
       } else {
         await updateMenuItem(draft.id, {
@@ -823,6 +826,7 @@ function ItemEditorInner({
           description: draft.description,
           image_url: draft.image_url,
           base_price: draft.base_price,
+          parcel_charge: draft.parcel_charge ?? 0,
           food_type: draft.food_type,
           is_bestseller: draft.is_bestseller,
           is_recommended: draft.is_recommended,
@@ -892,11 +896,19 @@ function ItemEditorInner({
           />
         </Field>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-3 gap-4">
           <Field label="Price (₹)" required>
             <input
               type="number" value={draft.base_price}
               onChange={e => set('base_price', Number(e.target.value))}
+              className="w-full rounded-lg border border-slate-200 px-3 py-2 outline-none focus:border-brand-500"
+            />
+          </Field>
+          <Field label="Parcel charge (₹)" hint="Added per unit on takeaway / delivery.">
+            <input
+              type="number" min={0} step="1"
+              value={draft.parcel_charge ?? 0}
+              onChange={e => set('parcel_charge', Number(e.target.value))}
               className="w-full rounded-lg border border-slate-200 px-3 py-2 outline-none focus:border-brand-500"
             />
           </Field>
@@ -957,12 +969,13 @@ function ItemEditorInner({
   );
 }
 
-function Field({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
+function Field({ label, required, hint, children }: { label: string; required?: boolean; hint?: string; children: React.ReactNode }) {
   return (
     <label className="block">
       <span className="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1.5">
         {label} {required && <span className="text-rose-500">*</span>}
       </span>
+      {hint && <p className="text-[11px] text-slate-500 mb-1">{hint}</p>}
       {children}
     </label>
   );
