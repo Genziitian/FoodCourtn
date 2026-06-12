@@ -12,9 +12,26 @@
 --
 -- Idempotent: the IF NOT EXISTS clause skips the add when 'delivery'
 -- is already present.
+--
+-- ⚠️  IMPORTANT — run as the ONLY statement in your SQL Editor query.
+--
+-- Postgres restriction (error 55P04, "unsafe use of new value"): once
+-- you ADD VALUE to an enum, that value can't be referenced in the SAME
+-- transaction it was added in. Supabase's SQL Editor wraps every Run
+-- in one implicit transaction, so a verify SELECT in the same script
+-- crashes. Run this file by itself, then run the separate verify query
+-- below in a NEW Run.
 -- ════════════════════════════════════════════════════════════════════
 
 alter type order_type add value if not exists 'delivery';
 
--- Verify
-select unnest(enum_range(null::order_type)) as order_type_values;
+-- ════════════════════════════════════════════════════════════════════
+-- Verify (paste into a SECOND query and run separately):
+--
+--   select unnest(enum_range(null::order_type)) as order_type_values;
+--
+-- Expected output:
+--   dine_in
+--   takeaway
+--   delivery
+-- ════════════════════════════════════════════════════════════════════
