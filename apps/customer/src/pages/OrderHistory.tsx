@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import type { OrderStatus } from '@foodcourt/shared';
-import { cls, inr } from '@foodcourt/shared';
+import { cls, inr, statusLabel } from '@foodcourt/shared';
 import { Icon } from '../components/Icon';
 import { BottomNav } from '../components/BottomNav';
 import { useAuth } from '../lib/auth';
@@ -9,12 +9,15 @@ import { useOrderHistory } from '../lib/data';
 
 type StatusFilter = 'all' | 'active' | OrderStatus;
 
-const STATUS_STYLE: Record<OrderStatus, { bg: string; text: string; label: string }> = {
-  received:  { bg: 'bg-blue-100',    text: 'text-blue-700',    label: 'Received' },
-  preparing: { bg: 'bg-amber-100',   text: 'text-amber-700',   label: 'Preparing' },
-  ready:     { bg: 'bg-emerald-100', text: 'text-emerald-700', label: 'Ready' },
-  completed: { bg: 'bg-slate-100',   text: 'text-slate-700',   label: 'Completed' },
-  cancelled: { bg: 'bg-rose-100',    text: 'text-rose-700',    label: 'Cancelled' },
+// Colour palette only — the label itself comes from the per-order-type
+// `statusLabel()` helper so dine-in / takeaway / delivery each get the
+// right wording (Ready / Prepared / Out for Delivery, etc.).
+const STATUS_STYLE: Record<OrderStatus, { bg: string; text: string }> = {
+  received:  { bg: 'bg-blue-100',    text: 'text-blue-700' },
+  preparing: { bg: 'bg-amber-100',   text: 'text-amber-700' },
+  ready:     { bg: 'bg-emerald-100', text: 'text-emerald-700' },
+  completed: { bg: 'bg-slate-100',   text: 'text-slate-700' },
+  cancelled: { bg: 'bg-rose-100',    text: 'text-rose-700' },
 };
 
 export default function OrderHistory() {
@@ -148,7 +151,7 @@ export default function OrderHistory() {
                       <p className="text-label-sm text-on-surface-variant capitalize">{orderTypeLabel}</p>
                     </div>
                     <span className={cls('inline-flex items-center rounded-full px-2.5 py-1 text-xs font-bold shrink-0', s.bg, s.text)}>
-                      {s.label}
+                      {statusLabel(o.type, o.status)}
                     </span>
                   </div>
 

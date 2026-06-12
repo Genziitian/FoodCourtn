@@ -215,7 +215,7 @@ export default function Dashboard() {
                   {o.customer_name ?? <span className="text-slate-400 italic">Anonymous</span>}
                 </span>
                 <span className="text-xs text-slate-500 hidden md:inline">{o.item_count} items</span>
-                <OrderStatusPill status={o.status} />
+                <OrderStatusPill status={o.status} orderType={o.type} />
                 <span className="font-semibold text-sm w-16 text-right">{inr(o.total)}</span>
               </li>
             ))}

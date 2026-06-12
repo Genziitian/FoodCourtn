@@ -162,7 +162,7 @@ export interface AdminOrder {
   id: string;
   code: string;
   restaurant_id: string;
-  type: 'dine_in' | 'takeaway';
+  type: 'dine_in' | 'takeaway' | 'delivery';
   status: 'received' | 'preparing' | 'ready' | 'completed' | 'cancelled';
   table_id: string | null;
   table_label: string | null;

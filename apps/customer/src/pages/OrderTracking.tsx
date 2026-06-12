@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import type { OrderStatus } from '@foodcourt/shared';
-import { cls, formatTime, inr, STATUS_LABEL, STATUS_SUBTITLE } from '@foodcourt/shared';
+import { cls, formatTime, inr, statusLabel, statusSubtitle } from '@foodcourt/shared';
 import { useOrder, useRestaurant } from '../lib/data';
 import { Icon } from '../components/Icon';
 import { BottomNav } from '../components/BottomNav';
@@ -10,12 +10,29 @@ import { NotificationOptIn } from '../components/NotificationOptIn';
 import { submitFeedback } from '../lib/api';
 import { useAuth } from '../lib/auth';
 
-const STEPS: { status: OrderStatus; icon: string }[] = [
-  { status: 'received',  icon: 'check_circle' },
-  { status: 'preparing', icon: 'soup_kitchen' },
-  { status: 'ready',     icon: 'notifications_active' },
-  { status: 'completed', icon: 'restaurant' },
+// Icons per (status, order_type). `ready` and `completed` swap their
+// glyphs for takeaway / delivery so the timeline reads the way the
+// customer would expect for each fulfilment path.
+const STEPS: { status: OrderStatus }[] = [
+  { status: 'received' },
+  { status: 'preparing' },
+  { status: 'ready' },
+  { status: 'completed' },
 ];
+
+function stepIcon(orderType: string | undefined | null, status: OrderStatus): string {
+  if (status === 'received')  return 'check_circle';
+  if (status === 'preparing') return 'soup_kitchen';
+  if (status === 'ready') {
+    if (orderType === 'delivery') return 'delivery_dining';
+    if (orderType === 'takeaway') return 'shopping_bag';
+    return 'notifications_active';
+  }
+  // completed
+  if (orderType === 'delivery') return 'local_shipping';
+  if (orderType === 'takeaway') return 'check';
+  return 'restaurant';
+}
 
 export default function OrderTracking() {
   const { slug, qrToken, code } = useParams();
@@ -77,7 +94,7 @@ export default function OrderTracking() {
           <h2 className="font-display text-[28px] font-extrabold mt-4 text-on-surface">Order Placed!</h2>
           <p className="text-on-surface-variant mt-1">
             {order.table_id ? `Table ${order.table_id ? '12' : ''} · ` : ''}
-            {order.type === 'dine_in' ? 'Dine-in' : 'Takeaway'}
+            {order.type === 'dine_in' ? 'Dine-in' : order.type === 'delivery' ? 'Delivery' : 'Takeaway'}
           </p>
 
           <div className="inline-block mt-4 px-6 py-3 rounded-2xl bg-primary/5 text-primary">
@@ -121,12 +138,12 @@ export default function OrderTracking() {
                       !isDone && !isActive && 'bg-white border-outline-variant text-on-surface-variant',
                     )}
                   >
-                    <Icon name={step.icon} size={20} fill={isDone || isActive} />
+                    <Icon name={stepIcon(order.type, step.status)} size={20} fill={isDone || isActive} />
                   </span>
                   <div className="flex-1 min-w-0 pt-1">
                     <div className="flex items-center justify-between gap-2">
                       <p className={cls('font-semibold', !isDone && !isActive && 'text-on-surface-variant')}>
-                        {STATUS_LABEL[step.status]}
+                        {statusLabel(order.type, step.status)}
                       </p>
                       <div className="text-label-sm text-secondary inline-flex items-center gap-1">
                         {isActive && (
@@ -138,7 +155,7 @@ export default function OrderTracking() {
                       </div>
                     </div>
                     <p className={cls('text-label-sm mt-0.5', !isDone && !isActive ? 'text-on-surface-variant/60' : 'text-on-surface-variant')}>
-                      {STATUS_SUBTITLE[step.status]}
+                      {statusSubtitle(order.type, step.status)}
                     </p>
                   </div>
                 </li>

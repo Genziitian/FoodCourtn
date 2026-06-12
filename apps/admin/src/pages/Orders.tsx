@@ -25,11 +25,21 @@ const NEXT: Record<AdminOrder['status'], AdminOrder['status'] | null> = {
   cancelled: null,
 };
 
-const NEXT_LABEL: Record<Exclude<AdminOrder['status'], 'completed' | 'cancelled'>, { label: string; icon: any }> = {
-  received:  { label: 'Start Preparing', icon: ChefHat },
-  preparing: { label: 'Mark Ready',      icon: Bell },
-  ready:     { label: 'Complete',        icon: CheckCircle2 },
-};
+// "Advance to next state" button — label depends on BOTH the current
+// status AND the order type, so the kitchen sees the same wording the
+// customer will see next on their tracking screen.
+type AdvanceKey = Exclude<AdminOrder['status'], 'completed' | 'cancelled'>;
+function nextLabel(orderType: AdminOrder['type'], status: AdvanceKey): { label: string; icon: any } {
+  if (status === 'received')  return { label: 'Start Preparing', icon: ChefHat };
+  if (status === 'preparing') {
+    if (orderType === 'delivery') return { label: 'Out for Delivery',  icon: Bell };
+    if (orderType === 'takeaway') return { label: 'Mark Prepared',     icon: Bell };
+    return                                 { label: 'Mark Ready',       icon: Bell };
+  }
+  // status === 'ready'
+  if (orderType === 'delivery') return { label: 'Mark Shipped',      icon: CheckCircle2 };
+  return                                  { label: 'Complete',          icon: CheckCircle2 };
+}
 
 export default function Orders() {
   const { scopedRestaurantIds, branch, branches } = useTenant();
@@ -222,7 +232,7 @@ export default function Orders() {
               {filtered.map(o => {
                 const next = NEXT[o.status];
                 const nextMeta = next != null && o.status !== 'completed' && o.status !== 'cancelled'
-                  ? NEXT_LABEL[o.status as keyof typeof NEXT_LABEL]
+                  ? nextLabel(o.type, o.status as AdvanceKey)
                   : null;
                 return (
                   <tr
@@ -248,7 +258,7 @@ export default function Orders() {
                       <p className="text-xs text-slate-500">{o.item_count} items</p>
                     </td>
                     <td className="px-4 py-3">
-                      <OrderStatusPill status={o.status} />
+                      <OrderStatusPill status={o.status} orderType={o.type} />
                     </td>
                     <td className="px-4 py-3">
                       <PaymentStatusPill status={o.payment_status as any} />
@@ -386,13 +396,13 @@ function OrderDetailDrawer({
                 <X className="size-4" /> Cancel order
               </button>
             )}
-            {next && (
+            {next && order.status !== 'completed' && order.status !== 'cancelled' && (
               <button
                 onClick={onAdvance}
                 className="inline-flex items-center gap-2 rounded-full bg-brand-600 text-white px-5 py-2 text-sm font-semibold hover:bg-brand-700"
               >
                 <RotateCcw className="size-4" />
-                Advance to {next}
+                {nextLabel(order.type, order.status as AdvanceKey).label}
               </button>
             )}
           </div>
@@ -402,7 +412,7 @@ function OrderDetailDrawer({
       <div className="space-y-6">
         <div className="grid grid-cols-2 gap-4">
           <InfoBlock label="Status">
-            <OrderStatusPill status={order.status} />
+            <OrderStatusPill status={order.status} orderType={order.type} />
           </InfoBlock>
           <InfoBlock label="Payment">
             <PaymentStatusPill status={order.payment_status as any} />
