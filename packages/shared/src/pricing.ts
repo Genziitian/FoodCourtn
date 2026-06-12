@@ -71,27 +71,37 @@ export function calculatePrice({
     applyTaxes && settings.service_charge_percent > 0
       ? (taxable * settings.service_charge_percent) / 100
       : 0;
-  // Packing / parcel charge for takeaway AND delivery orders.
+  // Order-type-specific charges, taken from each menu item.
   //
-  // Two ways to charge:
-  //   1. Per-item parcel charge — preferred. Each menu_items row carries an
-  //      optional `parcel_charge` (₹ per unit). When the customer adds a
-  //      Half Biryani (parcel ₹15) + a Gulab Jamun (parcel ₹5) and goes
-  //      Takeaway, parcel = 15*qty + 5*qty.
-  //   2. Flat fallback — `settings.packing_charge`. Used only when NO line
-  //      in the cart has a per-unit parcel charge configured (older menus
-  //      that haven't been touched since this column was added).
-  const isTakeawayLike = cart.order_type === 'takeaway' || cart.order_type === 'delivery';
+  //   TAKEAWAY  → packing/parcel charge per item (e.g. ₹15 per biryani box).
+  //               Falls back to settings.packing_charge (flat ₹) when no
+  //               line in the cart has a per-unit parcel charge configured.
+  //
+  //   DELIVERY  → delivery charge per item (e.g. ₹25 per biryani — hot-bag
+  //               + dispatch). Falls back to settings.delivery_fee (flat ₹)
+  //               for older menus that haven't been touched since the
+  //               per-item column was added.
+  //
+  // They're mutually exclusive: a takeaway order never accrues delivery
+  // charge, a delivery order never accrues parcel charge. This keeps the
+  // owner's mental model simple — one fee per order type, configurable
+  // per item.
   const perItemParcelSum = cart.lines.reduce(
     (s, l) => s + (Number(l.parcel_charge_per_unit ?? 0) * l.qty),
     0,
   );
-  const packingCharge = !isTakeawayLike
-    ? 0
-    : perItemParcelSum > 0
-      ? perItemParcelSum
-      : settings.packing_charge;
-  const deliveryFee = cart.order_type === 'delivery' ? Number(settings.delivery_fee ?? 0) : 0;
+  const perItemDeliverySum = cart.lines.reduce(
+    (s, l) => s + (Number(l.delivery_charge_per_unit ?? 0) * l.qty),
+    0,
+  );
+  const packingCharge =
+    cart.order_type !== 'takeaway' ? 0
+    : perItemParcelSum > 0 ? perItemParcelSum
+    : Number(settings.packing_charge ?? 0);
+  const deliveryFee =
+    cart.order_type !== 'delivery' ? 0
+    : perItemDeliverySum > 0 ? perItemDeliverySum
+    : Number(settings.delivery_fee ?? 0);
 
   const total = round2(taxable + tax + serviceCharge + packingCharge + deliveryFee);
 

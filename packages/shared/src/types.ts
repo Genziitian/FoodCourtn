@@ -168,7 +168,8 @@ export interface MenuItem {
   image_url: string | null;
   base_price: number;
   mrp: number | null;           // pre-discount price for strike-through
-  parcel_charge?: number;       // per-unit parcel/packing fee added on takeaway+delivery; defaults to 0
+  parcel_charge?: number;       // per-unit packing fee on TAKEAWAY (e.g. ₹15 per biryani box); defaults to 0
+  delivery_charge?: number;     // per-unit fee on DELIVERY (e.g. ₹25 per biryani — hot-bag/dispatch cost); defaults to 0
   food_type: FoodType;
   rating: number;
   rating_count: number;
@@ -227,7 +228,8 @@ export interface CartLine {
   qty: number;
   unit_price: number;          // variant price + modifiers
   line_total: number;
-  parcel_charge_per_unit?: number;   // copied from menu_items.parcel_charge; used on takeaway/delivery
+  parcel_charge_per_unit?: number;     // copied from menu_items.parcel_charge; used on takeaway
+  delivery_charge_per_unit?: number;   // copied from menu_items.delivery_charge; used on delivery
   notes?: string;
 }
 

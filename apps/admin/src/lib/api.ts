@@ -439,7 +439,8 @@ export interface MenuItemRow {
   description: string | null;
   image_url: string | null;
   base_price: number;
-  parcel_charge?: number;       // per-unit packing/parcel fee on takeaway/delivery
+  parcel_charge?: number;       // per-unit packing fee on TAKEAWAY
+  delivery_charge?: number;     // per-unit delivery fee on DELIVERY
   food_type: FoodType;
   rating: number;
   rating_count: number;
@@ -451,25 +452,38 @@ export interface MenuItemRow {
 }
 
 export async function listMenuItems(restaurantId: string): Promise<MenuItemRow[]> {
-  const { data, error } = await client()
+  // Try the richest select first; fall back progressively if either of the
+  // optional charge columns hasn't been migrated yet.
+  const fullSelect = 'id, restaurant_id, category_id, name, description, image_url, base_price, parcel_charge, delivery_charge, food_type, rating, rating_count, is_bestseller, is_recommended, in_stock, sort_order, categories(name)';
+  const parcelOnlySelect = 'id, restaurant_id, category_id, name, description, image_url, base_price, parcel_charge, food_type, rating, rating_count, is_bestseller, is_recommended, in_stock, sort_order, categories(name)';
+  const minimalSelect = 'id, restaurant_id, category_id, name, description, image_url, base_price, food_type, rating, rating_count, is_bestseller, is_recommended, in_stock, sort_order, categories(name)';
+
+  // Cast both `data` and `error` to `any` because each fallback SELECT
+  // returns a different inferred shape; TS would otherwise complain.
+  let data: any = null;
+  let error: any = null;
+  ({ data, error } = await client()
     .from('menu_items')
-    .select('id, restaurant_id, category_id, name, description, image_url, base_price, parcel_charge, food_type, rating, rating_count, is_bestseller, is_recommended, in_stock, sort_order, categories(name)')
+    .select(fullSelect)
     .eq('restaurant_id', restaurantId)
-    .order('sort_order');
-  if (error) {
-    // Fall back if parcel_charge column doesn't exist yet (migration not run).
-    if (/column .*parcel_charge/i.test(error.message ?? '')) {
-      const { data: data2, error: e2 } = await client()
-        .from('menu_items')
-        .select('id, restaurant_id, category_id, name, description, image_url, base_price, food_type, rating, rating_count, is_bestseller, is_recommended, in_stock, sort_order, categories(name)')
-        .eq('restaurant_id', restaurantId)
-        .order('sort_order');
-      if (e2) throw e2;
-      return (data2 ?? []).map(mapRow);
-    }
-    throw error;
+    .order('sort_order'));
+
+  if (error && /column .*delivery_charge/i.test(error.message ?? '')) {
+    ({ data, error } = await client()
+      .from('menu_items')
+      .select(parcelOnlySelect)
+      .eq('restaurant_id', restaurantId)
+      .order('sort_order'));
   }
-  return (data ?? []).map(mapRow);
+  if (error && /column .*parcel_charge/i.test(error.message ?? '')) {
+    ({ data, error } = await client()
+      .from('menu_items')
+      .select(minimalSelect)
+      .eq('restaurant_id', restaurantId)
+      .order('sort_order'));
+  }
+  if (error) throw error;
+  return ((data ?? []) as any[]).map(mapRow);
 }
 
 function mapRow(r: any): MenuItemRow {
@@ -481,7 +495,8 @@ function mapRow(r: any): MenuItemRow {
     description: r.description,
     image_url: r.image_url,
     base_price: Number(r.base_price),
-    parcel_charge: r.parcel_charge != null ? Number(r.parcel_charge) : 0,
+    parcel_charge:   r.parcel_charge   != null ? Number(r.parcel_charge)   : 0,
+    delivery_charge: r.delivery_charge != null ? Number(r.delivery_charge) : 0,
     food_type: r.food_type,
     rating: Number(r.rating ?? 0),
     rating_count: r.rating_count ?? 0,
@@ -502,7 +517,8 @@ function mapRow(r: any): MenuItemRow {
  */
 export interface MenuItemExtras {
   strike_price?: number | null;     // MRP shown with strikethrough on cards
-  parcel_charge?: number | null;    // extra packing fee added on takeaway
+  parcel_charge?: number | null;    // per-unit packing fee on TAKEAWAY
+  delivery_charge?: number | null;  // per-unit delivery fee on DELIVERY
   meal_time?: string | null;        // 'breakfast' | 'lunch' | 'dinner' | 'all_day' | free text
   tags?: string[];                  // ['best-seller', 'recommended', 'chef-special', ...]
   rating?: number;                  // free-form imported rating (0-5)
@@ -525,8 +541,9 @@ export async function createMenuItem(
     in_stock: input.in_stock,
     sort_order: input.sort_order,
   };
-  if (extras.strike_price  !== undefined) payload.strike_price  = extras.strike_price;
-  if (extras.parcel_charge !== undefined) payload.parcel_charge = extras.parcel_charge;
+  if (extras.strike_price    !== undefined) payload.strike_price    = extras.strike_price;
+  if (extras.parcel_charge   !== undefined) payload.parcel_charge   = extras.parcel_charge;
+  if (extras.delivery_charge !== undefined) payload.delivery_charge = extras.delivery_charge;
   if (extras.meal_time     !== undefined) payload.meal_time     = extras.meal_time;
   if (extras.tags          !== undefined) payload.tags          = extras.tags;
   if (extras.rating        !== undefined) payload.rating        = extras.rating;

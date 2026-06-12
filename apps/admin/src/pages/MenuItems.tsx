@@ -86,7 +86,8 @@ export default function MenuItems() {
   // so they can copy-paste rows from Google Sheets without rearranging.
   const TEMPLATE_HEADER = [
     'Sr.no', 'Item Name', 'Image', 'description', 'Category Name', 'veg/non-veg',
-    'Slash/strike price', 'Actual Price including Parcel Charges', 'Parcel Charges',
+    'Slash/strike price', 'Actual Price including Parcel Charges',
+    'Parcel Charges', 'Delivery Charges',
     'Breakfast/lunch/dinner', 'Tags', 'Additional tags',
     'add-ons', 'add-ons price', 'half/full', 'half price', 'full price', 'Rating',
   ];
@@ -101,12 +102,13 @@ export default function MenuItems() {
         it.description ?? '',
         categories.find(c => c.id === it.category_id)?.name ?? '',
         it.food_type === 'non_veg' ? 'non-veg' : (it.food_type === 'egg' ? 'egg' : 'veg'),
-        '',                                       // strike_price not on listMenuItems shape today
+        '',                                       // strike_price
         String(it.base_price),
-        '',                                       // parcel_charge — same as above
+        String(it.parcel_charge ?? 0),
+        String(it.delivery_charge ?? 0),
         '',                                       // meal_time
-        it.is_recommended ? 'recommended' : '',   // legacy mapping into Tags
-        it.is_bestseller  ? 'best-seller' : '',   // legacy mapping into Additional tags
+        it.is_recommended ? 'recommended' : '',
+        it.is_bestseller  ? 'best-seller' : '',
         '', '', '', '', '',                        // add-ons + half/full extras
         String(it.rating ?? ''),
       ]);
@@ -122,21 +124,29 @@ export default function MenuItems() {
       // rows showing tags, add-ons, and half/full variants so owners can see
       // each column in action.
       ['1', 'Triple Chicken Rice', '', '', 'chinese', 'non-veg',
-        '180', '140', '10', 'dinner',
+        '180', '140',
+        '10', '25',
+        'dinner',
         '', 'best-seller',
         '', '', '', '', '', '4.8'],
       ['2', 'Paneer Tikka', 'https://images.example.com/paneer.jpg',
         'Smoky cottage cheese cubes, tandoor-grilled', 'Starters', 'veg',
-        '320', '280', '0', 'lunch',
+        '320', '280',
+        '15', '30',
+        'lunch',
         'recommended', 'chef-special',
         'Extra Cheese; Extra Sauce', '30; 20', '', '', '', '4.6'],
       ['3', 'Butter Chicken', '', 'Creamy tomato gravy with charred chicken',
         'Mains', 'non-veg',
-        '', '320', '15', 'dinner',
+        '', '320',
+        '15', '35',
+        'dinner',
         'recommended,popular', 'best-seller',
         '', '', 'yes', '220', '320', '4.7'],
       ['4', 'Masala Chai', '', 'Traditional spiced milk tea', 'Beverages', 'veg',
-        '80', '60', '0', 'all_day',
+        '80', '60',
+        '0', '10',
+        'all_day',
         '', '', '', '', '', '', '', '4.5'],
     ];
     const csv = sample.map(r => r.map(csvEscape).join(',')).join('\n');
@@ -169,6 +179,7 @@ export default function MenuItems() {
       strike:      col('slash/strike price', 'strike_price'),
       price:       col('actual price including parcel charges', 'price', 'actual price'),
       parcel:      col('parcel charges', 'parcel_charge'),
+      delivery:    col('delivery charges', 'delivery_charge'),
       meal_time:   col('breakfast/lunch/dinner', 'meal_time'),
       tags:        col('tags'),
       extra_tags:  col('additional tags'),
@@ -225,8 +236,9 @@ export default function MenuItems() {
       const fullPriceRaw = ix.full_price >= 0 ? (r[ix.full_price] ?? '').toString().trim() : '';
       const halfPriceRaw = ix.half_price >= 0 ? (r[ix.half_price] ?? '').toString().trim() : '';
       const basePrice = Number(priceRaw || fullPriceRaw || 0);
-      const strikePrice = ix.strike >= 0 && r[ix.strike] ? Number(r[ix.strike]) : null;
-      const parcelCharge = ix.parcel >= 0 && r[ix.parcel] ? Number(r[ix.parcel]) : 0;
+      const strikePrice   = ix.strike   >= 0 && r[ix.strike]   ? Number(r[ix.strike])   : null;
+      const parcelCharge  = ix.parcel   >= 0 && r[ix.parcel]   ? Number(r[ix.parcel])   : 0;
+      const deliveryCharge = ix.delivery >= 0 && r[ix.delivery] ? Number(r[ix.delivery]) : 0;
 
       // 3. Food type — accepts veg/non-veg/egg variants.
       const foodTypeRaw = (r[ix.food_type] ?? 'veg').trim().toLowerCase();
@@ -270,17 +282,18 @@ export default function MenuItems() {
             sort_order: i,
           },
           {
-            strike_price:  isNaN(Number(strikePrice)) || strikePrice === null ? null : Number(strikePrice),
-            parcel_charge: isNaN(parcelCharge) ? 0 : parcelCharge,
-            meal_time:     ix.meal_time >= 0 ? ((r[ix.meal_time] ?? '').toString().trim().toLowerCase() || null) : null,
-            tags:          freeformTags,
-            rating:        isNaN(ratingRaw) ? undefined : Math.max(0, Math.min(5, ratingRaw)),
+            strike_price:    isNaN(Number(strikePrice)) || strikePrice === null ? null : Number(strikePrice),
+            parcel_charge:   isNaN(parcelCharge)   ? 0 : parcelCharge,
+            delivery_charge: isNaN(deliveryCharge) ? 0 : deliveryCharge,
+            meal_time:       ix.meal_time >= 0 ? ((r[ix.meal_time] ?? '').toString().trim().toLowerCase() || null) : null,
+            tags:            freeformTags,
+            rating:          isNaN(ratingRaw) ? undefined : Math.max(0, Math.min(5, ratingRaw)),
           },
         );
       } catch (e: any) {
         // Extras columns might be missing in DB if the migration hasn't been run yet —
         // retry without them so the import still succeeds with core fields.
-        if (/strike_price|parcel_charge|meal_time|tags/.test(e?.message ?? '')) {
+        if (/strike_price|parcel_charge|delivery_charge|meal_time|tags/.test(e?.message ?? '')) {
           try {
             createdItem = await createMenuItem({
               restaurant_id: restaurantId,
@@ -351,6 +364,7 @@ export default function MenuItems() {
     image_url: null,
     base_price: 0,
     parcel_charge: 0,
+    delivery_charge: 0,
     food_type: 'veg',
     rating: 0,
     rating_count: 0,
@@ -817,7 +831,8 @@ function ItemEditorInner({
           in_stock: draft.in_stock,
           sort_order: draft.sort_order,
         }, {
-          parcel_charge: draft.parcel_charge ?? 0,
+          parcel_charge:   draft.parcel_charge   ?? 0,
+          delivery_charge: draft.delivery_charge ?? 0,
         });
       } else {
         await updateMenuItem(draft.id, {
@@ -826,7 +841,8 @@ function ItemEditorInner({
           description: draft.description,
           image_url: draft.image_url,
           base_price: draft.base_price,
-          parcel_charge: draft.parcel_charge ?? 0,
+          parcel_charge:   draft.parcel_charge   ?? 0,
+          delivery_charge: draft.delivery_charge ?? 0,
           food_type: draft.food_type,
           is_bestseller: draft.is_bestseller,
           is_recommended: draft.is_recommended,
@@ -896,7 +912,7 @@ function ItemEditorInner({
           />
         </Field>
 
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-2 gap-4">
           <Field label="Price (₹)" required>
             <input
               type="number" value={draft.base_price}
@@ -904,7 +920,17 @@ function ItemEditorInner({
               className="w-full rounded-lg border border-slate-200 px-3 py-2 outline-none focus:border-brand-500"
             />
           </Field>
-          <Field label="Parcel charge (₹)" hint="Added per unit on takeaway / delivery.">
+          <Field label="Sort order">
+            <input
+              type="number" value={draft.sort_order}
+              onChange={e => set('sort_order', Number(e.target.value))}
+              className="w-full rounded-lg border border-slate-200 px-3 py-2 outline-none focus:border-brand-500"
+            />
+          </Field>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <Field label="Parcel charge (₹)" hint="Per unit, added on TAKEAWAY orders only.">
             <input
               type="number" min={0} step="1"
               value={draft.parcel_charge ?? 0}
@@ -912,10 +938,11 @@ function ItemEditorInner({
               className="w-full rounded-lg border border-slate-200 px-3 py-2 outline-none focus:border-brand-500"
             />
           </Field>
-          <Field label="Sort order">
+          <Field label="Delivery charge (₹)" hint="Per unit, added on DELIVERY orders only.">
             <input
-              type="number" value={draft.sort_order}
-              onChange={e => set('sort_order', Number(e.target.value))}
+              type="number" min={0} step="1"
+              value={draft.delivery_charge ?? 0}
+              onChange={e => set('delivery_charge', Number(e.target.value))}
               className="w-full rounded-lg border border-slate-200 px-3 py-2 outline-none focus:border-brand-500"
             />
           </Field>

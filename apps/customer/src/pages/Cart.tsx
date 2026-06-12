@@ -537,23 +537,32 @@ export default function Cart() {
                   {/* Parcel/packing charge — automatic on takeaway. The total
                       already includes this amount; we render it as its own line
                       so the customer can see exactly what the takeaway add-on is. */}
-                  {breakdown.packing_charge > 0 && (
+                  {/* Parcel charge row — TAKEAWAY orders only. Sum of each
+                      item's per-unit parcel_charge × qty (fallback to the
+                      restaurant's flat packing_charge when no item has one). */}
+                  {cart.order_type === 'takeaway' && breakdown.packing_charge > 0 && (
                     <div className="flex justify-between text-secondary">
                       <span className="font-medium inline-flex items-center gap-1.5">
                         <Icon name="shopping_bag" size={14} className="text-on-surface-variant" />
                         Parcel Charge
                         <span className="text-[10px] uppercase font-bold tracking-wider bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">
-                          {cart.order_type === 'delivery' ? 'Included · Delivery' : 'Included · Takeaway'}
+                          Takeaway
                         </span>
                       </span>
                       <span className="text-on-surface font-semibold">{inr(breakdown.packing_charge)}</span>
                     </div>
                   )}
-                  {(breakdown.delivery_fee ?? 0) > 0 && (
+                  {/* Delivery charge row — DELIVERY orders only. Sum of each
+                      item's per-unit delivery_charge × qty (fallback to the
+                      flat settings.delivery_fee when no item has one). */}
+                  {cart.order_type === 'delivery' && (breakdown.delivery_fee ?? 0) > 0 && (
                     <div className="flex justify-between text-secondary">
                       <span className="font-medium inline-flex items-center gap-1.5">
                         <Icon name="delivery_dining" size={14} className="text-on-surface-variant" />
-                        Delivery Fee
+                        Delivery Charge
+                        <span className="text-[10px] uppercase font-bold tracking-wider bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">
+                          Delivery
+                        </span>
                       </span>
                       <span className="text-on-surface font-semibold">{inr(breakdown.delivery_fee ?? 0)}</span>
                     </div>

@@ -63,7 +63,8 @@ export function ItemDetailModal({ item, onClose }: Props) {
       spice_level: spice,
       qty,
       unit_price: unitPrice,
-      parcel_charge_per_unit: Number(item.parcel_charge ?? 0),
+      parcel_charge_per_unit:   Number(item.parcel_charge   ?? 0),
+      delivery_charge_per_unit: Number(item.delivery_charge ?? 0),
       notes: notes.trim() || undefined,
     });
     onClose();
