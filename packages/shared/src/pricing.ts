@@ -5,6 +5,13 @@ interface PricingInput {
   settings: RestaurantSettings;
   coupons: Coupon[];
   coinsAvailable: number;
+  /**
+   * Optional override for delivery orders only. When true, BOTH the
+   * per-item delivery_charge sum AND the flat delivery_fee are zeroed.
+   * The customer cart sets this to true when the customer's distance
+   * is inside the restaurant's free-delivery radius.
+   */
+  freeDelivery?: boolean;
 }
 
 /**
@@ -22,6 +29,7 @@ export function calculatePrice({
   settings,
   coupons,
   coinsAvailable,
+  freeDelivery,
 }: PricingInput): PriceBreakdown {
   const subtotal = cart.lines.reduce((s, l) => s + l.line_total, 0);
 
@@ -100,6 +108,7 @@ export function calculatePrice({
     : Number(settings.packing_charge ?? 0);
   const deliveryFee =
     cart.order_type !== 'delivery' ? 0
+    : freeDelivery ? 0                           // within the restaurant's free-delivery radius
     : perItemDeliverySum > 0 ? perItemDeliverySum
     : Number(settings.delivery_fee ?? 0);
 

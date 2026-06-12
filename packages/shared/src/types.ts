@@ -25,11 +25,12 @@ export interface RestaurantSettings {
   // packing/parcel charge on takeaway is unaffected. Defaults to true.
   apply_taxes_and_charges?: boolean;
   // ── Delivery (manual-update, GPS-gated) ───────────────────────────────
-  delivery_enabled?: boolean;       // master switch: when false the Delivery tab is hidden
-  delivery_radius_km?: number;      // default 5; customers outside the radius see "out of area"
-  delivery_lat?: number | null;     // restaurant latitude — used for the radius check
-  delivery_lng?: number | null;     // restaurant longitude
-  delivery_fee?: number;            // flat ₹ charge added to delivery orders
+  delivery_enabled?: boolean;          // master switch: when false the Delivery tab is hidden
+  delivery_radius_km?: number;         // max delivery distance — default 10 km; outside this radius we refuse the order
+  delivery_free_until_km?: number;     // free zone — default 2 km; everything within this distance is delivered free
+  delivery_lat?: number | null;        // restaurant latitude — used for the radius check
+  delivery_lng?: number | null;        // restaurant longitude
+  delivery_fee?: number;               // flat ₹ charge added once the customer is past the free zone (and inside the max radius)
 }
 
 export interface Restaurant {

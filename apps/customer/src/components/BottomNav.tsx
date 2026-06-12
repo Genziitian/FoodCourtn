@@ -39,7 +39,7 @@ export function BottomNav() {
         <Tab to={base}                                      label="Home"        icon="home"            active={active === 'home'} />
         <Tab to={`${base}/menu`}                            label="Menu"        icon="restaurant_menu" active={active === 'menu'} />
         <Tab to={`${base}/cart`}                            label="Cart"        icon="shopping_cart"   active={active === 'cart'}   badge={cartCount} />
-        <Tab to={`${base}/profile/orders?filter=active`}    label="Order Menu"  icon="receipt_long"    active={active === 'orders'} />
+        <Tab to={`${base}/profile/orders?filter=active`}    label="Orders"      icon="receipt_long"    active={active === 'orders'} />
       </div>
     </nav>
   );

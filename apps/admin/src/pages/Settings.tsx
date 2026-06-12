@@ -82,10 +82,11 @@ const DEFAULT_SETTINGS: FormState['settings'] = {
   loyalty_max_redeem_percent: 10,
   apply_taxes_and_charges: true,
   delivery_enabled: false,
-  delivery_radius_km: 5,
+  delivery_radius_km: 10,
+  delivery_free_until_km: 2,
   delivery_lat: null,
   delivery_lng: null,
-  delivery_fee: 0,
+  delivery_fee: 40,
   open_at: '09:00',
   close_at: '23:00',
   hours_weekly: defaultWeeklyHours(),
@@ -943,21 +944,32 @@ function DeliveryPanel({ form, setS }: { form: FormState; setS: SetS }) {
 
       <Panel
         title="Radius & fee"
-        subtitle="The hard ceiling we use to refuse orders outside your delivery zone."
+        subtitle="How far you deliver, plus the free zone and the flat fee charged outside it. A typical Indian setup: free up to 2 km, ₹40 from 2–10 km, no delivery past 10 km."
       >
-        <div className="grid grid-cols-2 gap-4">
-          <Field label="Delivery radius (km)" hint="Default 5 km.">
+        <div className="grid grid-cols-3 gap-4">
+          <Field label="Free up to (km)" hint="Within this distance the customer pays ₹0 for delivery.">
+            <div className="relative">
+              <Input
+                type="number" min={0} max={50} step="0.1"
+                value={form.settings.delivery_free_until_km ?? 0}
+                onChange={e => setS('delivery_free_until_km', Number(e.target.value))}
+                className="pr-12"
+              />
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 text-sm">km</span>
+            </div>
+          </Field>
+          <Field label="Max delivery (km)" hint="Customers outside this radius can't place a delivery order.">
             <div className="relative">
               <Input
                 type="number" min={0.5} max={50} step="0.1"
-                value={form.settings.delivery_radius_km ?? 5}
+                value={form.settings.delivery_radius_km ?? 10}
                 onChange={e => setS('delivery_radius_km', Number(e.target.value))}
                 className="pr-12"
               />
               <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 text-sm">km</span>
             </div>
           </Field>
-          <Field label="Delivery fee (flat)" hint="Added on top of every delivery order, in addition to the parcel charge.">
+          <Field label="Fee outside free zone (₹)" hint="Flat ₹ added to delivery orders past the free zone.">
             <div className="relative">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-sm">₹</span>
               <Input
@@ -969,6 +981,10 @@ function DeliveryPanel({ form, setS }: { form: FormState; setS: SetS }) {
             </div>
           </Field>
         </div>
+        <p className="text-xs text-slate-500">
+          Per-item delivery charges (set on individual menu items) still apply when the customer is past the free zone.
+          Within the free zone the customer pays ₹0 — per-item charges are waived too.
+        </p>
       </Panel>
     </div>
   );

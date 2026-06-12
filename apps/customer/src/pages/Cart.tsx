@@ -45,7 +45,8 @@ export default function Cart() {
   const deliveryLat = Number(restaurant?.settings?.delivery_lat ?? NaN);
   const deliveryLng = Number(restaurant?.settings?.delivery_lng ?? NaN);
   const restaurantHasLocation = Number.isFinite(deliveryLat) && Number.isFinite(deliveryLng);
-  const deliveryRadiusKm = Number(restaurant?.settings?.delivery_radius_km ?? 5);
+  const deliveryRadiusKm    = Number(restaurant?.settings?.delivery_radius_km ?? 10);
+  const deliveryFreeUntilKm = Number(restaurant?.settings?.delivery_free_until_km ?? 0);
   const geo = useGeolocation();
 
   const distanceFromRestaurant = useMemo(() => {
@@ -57,6 +58,10 @@ export default function Cart() {
   }, [geo.state, deliveryLat, deliveryLng, restaurantHasLocation]);
 
   const withinRadius = distanceFromRestaurant !== null && distanceFromRestaurant <= deliveryRadiusKm;
+  const withinFreeZone =
+    cart.order_type === 'delivery' &&
+    distanceFromRestaurant !== null &&
+    distanceFromRestaurant <= deliveryFreeUntilKm;
   const deliveryBlocked =
     cart.order_type === 'delivery' &&
     (!restaurantHasLocation || geo.state.status !== 'ready' || !withinRadius);
@@ -68,8 +73,9 @@ export default function Cart() {
       settings: restaurant.settings,
       coupons,
       coinsAvailable,
+      freeDelivery: withinFreeZone,
     });
-  }, [cart, restaurant, coupons, coinsAvailable]);
+  }, [cart, restaurant, coupons, coinsAvailable, withinFreeZone]);
 
   // Auto-apply the best eligible coupon, but only if:
   //   - no coupon is currently applied
@@ -373,7 +379,9 @@ export default function Cart() {
               </p>
               <p className="text-label-sm text-secondary">
                 {cart.order_type === 'delivery'
-                  ? `Within ${deliveryRadiusKm} km of the restaurant`
+                  ? deliveryFreeUntilKm > 0
+                    ? `Free up to ${deliveryFreeUntilKm} km · max ${deliveryRadiusKm} km`
+                    : `Within ${deliveryRadiusKm} km of the restaurant`
                   : `Ready in ${restaurant.prep_time_min + 10}–${restaurant.prep_time_max + 10} mins`}
               </p>
             </div>
@@ -442,7 +450,9 @@ export default function Cart() {
                     <Icon name="check_circle" size={18} fill className="text-success" />
                     <span>
                       <strong>You're {distanceFromRestaurant.toFixed(1)} km away</strong>
-                      {' · '}within our {deliveryRadiusKm} km area.
+                      {withinFreeZone
+                        ? <> · <span className="font-bold text-success">FREE delivery</span> within {deliveryFreeUntilKm} km</>
+                        : <> · within our {deliveryRadiusKm} km area</>}
                     </span>
                   </div>
                 ) : (

@@ -7,7 +7,8 @@ import { BottomNav } from '../components/BottomNav';
 import { useAuth } from '../lib/auth';
 import { useOrderHistory } from '../lib/data';
 
-type StatusFilter = 'all' | 'active' | OrderStatus;
+type StatusFilter = 'all' | 'active' | 'history' | OrderStatus;
+type TypeFilter = 'all' | 'dine_in' | 'takeaway' | 'delivery';
 
 // Colour palette only — the label itself comes from the per-order-type
 // `statusLabel()` helper so dine-in / takeaway / delivery each get the
@@ -29,28 +30,42 @@ export default function OrderHistory() {
   const { customerId } = useAuth();
   const { orders, loading } = useOrderHistory(customerId);
 
-  // Initial filter from URL — bottom nav "Order Menu" tab links here with
-  // `?filter=active` (live orders only); the Profile "Order History" row
-  // links here with `?filter=all`. Falls back to 'all' if absent / unknown.
+  // Initial filter from URL.
+  //   ?filter=active  — bottom-nav "Orders" tab → only live orders
+  //                     (received / preparing / ready). Type chips show
+  //                     so the customer can narrow to one fulfilment path.
+  //   ?filter=history — Profile "Order History" row → only completed +
+  //                     cancelled orders, no type chips.
+  //   ?filter=all     — explicit "everything" view.
+  //   absent          — defaults to 'all'.
   const initialFilter = ((): StatusFilter => {
     const f = searchParams.get('filter');
-    if (f === 'active' || f === 'all' || f === 'received' || f === 'preparing' || f === 'ready' || f === 'completed' || f === 'cancelled') {
+    if (f === 'active' || f === 'history' || f === 'all'
+      || f === 'received' || f === 'preparing' || f === 'ready'
+      || f === 'completed' || f === 'cancelled') {
       return f;
     }
     return 'all';
   })();
   const [filter, setFilter] = useState<StatusFilter>(initialFilter);
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>('all');
   const [query, setQuery] = useState('');
 
-  // Title reflects the mode: "Order Menu" for live/active, "Order History" otherwise.
-  const pageTitle = filter === 'active' ? 'Order Menu' : 'Order History';
+  // Title reflects the mode.
+  const pageTitle =
+    filter === 'active' ? 'Live Orders'
+    : filter === 'history' ? 'Order History'
+    : 'All Orders';
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return orders.filter(o => {
       // status filter
-      if (filter === 'active' && (o.status === 'completed' || o.status === 'cancelled')) return false;
-      if (filter !== 'all' && filter !== 'active' && o.status !== filter) return false;
+      if (filter === 'active'  && (o.status === 'completed' || o.status === 'cancelled')) return false;
+      if (filter === 'history' && o.status !== 'completed' && o.status !== 'cancelled') return false;
+      if (filter !== 'all' && filter !== 'active' && filter !== 'history' && o.status !== filter) return false;
+      // order-type filter (only used on the active view, but harmless elsewhere)
+      if (typeFilter !== 'all' && o.type !== typeFilter) return false;
       // search
       if (q) {
         const matchesCode = o.code.toLowerCase().includes(q);
@@ -59,7 +74,7 @@ export default function OrderHistory() {
       }
       return true;
     });
-  }, [orders, filter, query]);
+  }, [orders, filter, typeFilter, query]);
 
   const reorder = (orderCode: string) => {
     // For now, just open the order tracking page
@@ -98,23 +113,52 @@ export default function OrderHistory() {
           )}
         </div>
 
-        {/* Filter chips */}
-        <div className="no-scrollbar overflow-x-auto flex gap-2">
-          {(['all','active','completed','cancelled'] as const).map(f => (
-            <button
-              key={f}
-              onClick={() => setFilter(f)}
-              className={cls(
-                'shrink-0 rounded-pill px-4 py-2 text-label-bold transition capitalize',
-                filter === f
-                  ? 'bg-primary text-on-primary shadow-sm'
-                  : 'bg-surface-container-lowest border border-outline-variant/30 text-on-surface hover:bg-surface-container-low',
-              )}
-            >
-              {f === 'all' ? 'All orders' : f}
-            </button>
-          ))}
-        </div>
+        {/* Order-type chips — only meaningful on the live "Orders" view.
+            On the history view the customer just sees their full archive. */}
+        {filter === 'active' && (
+          <div className="no-scrollbar overflow-x-auto flex gap-2">
+            {([
+              { k: 'all',      label: 'All',      icon: null },
+              { k: 'dine_in',  label: 'Dine-in',  icon: 'restaurant' as const },
+              { k: 'takeaway', label: 'Takeaway', icon: 'shopping_bag' as const },
+              { k: 'delivery', label: 'Delivery', icon: 'delivery_dining' as const },
+            ] as const).map(t => (
+              <button
+                key={t.k}
+                onClick={() => setTypeFilter(t.k)}
+                className={cls(
+                  'shrink-0 rounded-pill px-4 py-2 text-label-bold transition inline-flex items-center gap-1.5',
+                  typeFilter === t.k
+                    ? 'bg-primary text-on-primary shadow-sm'
+                    : 'bg-surface-container-lowest border border-outline-variant/30 text-on-surface hover:bg-surface-container-low',
+                )}
+              >
+                {t.icon && <Icon name={t.icon} size={14} />}
+                {t.label}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Status chips — only useful on the explicit "all orders" view. */}
+        {filter !== 'active' && filter !== 'history' && (
+          <div className="no-scrollbar overflow-x-auto flex gap-2">
+            {(['all','active','history'] as const).map(f => (
+              <button
+                key={f}
+                onClick={() => setFilter(f)}
+                className={cls(
+                  'shrink-0 rounded-pill px-4 py-2 text-label-bold transition capitalize',
+                  filter === f
+                    ? 'bg-primary text-on-primary shadow-sm'
+                    : 'bg-surface-container-lowest border border-outline-variant/30 text-on-surface hover:bg-surface-container-low',
+                )}
+              >
+                {f === 'all' ? 'All orders' : f === 'active' ? 'Live' : 'History'}
+              </button>
+            ))}
+          </div>
+        )}
 
         {loading ? (
           <div className="card p-10 text-center">
