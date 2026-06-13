@@ -71,8 +71,19 @@ export default function Cart() {
     cart.order_type === 'delivery' &&
     distanceFromRestaurant !== null &&
     distanceFromRestaurant <= deliveryFreeUntilKm;
+
+  // Manual address fallback. Some customers genuinely can't share GPS
+  // (Android Chrome blocks the permission prompt when chat-head bubbles
+  // from Meet/WhatsApp/Messenger are floating; corporate phones lock it
+  // entirely). Letting them type the address means delivery never
+  // dead-ends — staff verify on the doorstep.
+  const [manualAddressOpen, setManualAddressOpen] = useState(false);
+  const [manualAddress, setManualAddress] = useState('');
+  const hasManualAddress = manualAddress.trim().length > 10;
+
   const deliveryBlocked =
     cart.order_type === 'delivery' &&
+    !hasManualAddress &&
     (!restaurantHasLocation || geo.state.status !== 'ready' || !withinRadius);
 
   // Cart enriched with the latest per-item parcel + delivery charges from
@@ -179,6 +190,14 @@ export default function Cart() {
     setPlaceError(null);
     try {
       // 1) Place the order — generates the order code we'll use as Razorpay receipt.
+      // Stamp the typed delivery address into customer_notes so the kitchen
+      // + delivery rider see it on the KOT / Orders detail. Format keeps
+      // any existing notes intact.
+      const customer_notes =
+        cart.order_type === 'delivery' && hasManualAddress
+          ? `📍 Delivery address: ${manualAddress.trim()}`
+          : undefined;
+
       const order = await placeOrder({
         restaurant_id: restaurant.id,
         table_id: tableId,
@@ -189,6 +208,7 @@ export default function Cart() {
         // parcel/delivery charges the customer saw in Bill Summary.
         cart: pricedCart,
         breakdown,
+        customer_notes,
       });
 
       // 2) Open Razorpay Checkout whenever this branch has a configured key —
@@ -448,14 +468,22 @@ export default function Cart() {
                 </p>
               )}
 
-              {restaurantHasLocation && geo.state.status === 'idle' && (
-                <button
-                  onClick={() => geo.request()}
-                  className="w-full rounded-2xl bg-primary text-on-primary font-semibold py-3 active:scale-[0.98] flex items-center justify-center gap-2"
-                >
-                  <Icon name="my_location" size={18} />
-                  Use my location
-                </button>
+              {restaurantHasLocation && geo.state.status === 'idle' && !manualAddressOpen && (
+                <>
+                  <button
+                    onClick={() => geo.request()}
+                    className="w-full rounded-2xl bg-primary text-on-primary font-semibold py-3 active:scale-[0.98] flex items-center justify-center gap-2"
+                  >
+                    <Icon name="my_location" size={18} />
+                    Use my location
+                  </button>
+                  <button
+                    onClick={() => setManualAddressOpen(true)}
+                    className="w-full text-primary text-label-bold font-semibold inline-flex items-center justify-center gap-1"
+                  >
+                    or enter address manually
+                  </button>
+                </>
               )}
 
               {geo.state.status === 'requesting' && (
@@ -466,16 +494,62 @@ export default function Cart() {
               )}
 
               {geo.state.status === 'denied' && (
-                <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-sm text-amber-900">
-                  <p className="font-semibold">Location permission denied.</p>
-                  <p className="text-xs mt-1">Enable location in your browser settings and reload, or choose Takeaway / Dine-In instead.</p>
+                <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-sm text-amber-900 space-y-2">
+                  <p className="font-semibold">We couldn't get your location.</p>
+                  <p className="text-xs">
+                    On Android, this often happens when chat bubbles (Google Meet, WhatsApp, Messenger) are floating on top of the browser. Close those bubbles and try again, or enter your address manually below.
+                  </p>
+                  <button
+                    onClick={() => { setManualAddressOpen(true); geo.reset(); }}
+                    className="text-xs font-bold text-amber-900 underline"
+                  >
+                    Enter address manually
+                  </button>
                 </div>
               )}
 
               {geo.state.status === 'unavailable' && (
-                <p className="rounded-lg bg-error-container/40 px-3 py-2 text-sm text-error">
-                  {geo.state.reason}
-                </p>
+                <div className="rounded-lg bg-error-container/40 px-3 py-2 text-sm text-error space-y-2">
+                  <p>{geo.state.reason}</p>
+                  <button
+                    onClick={() => { setManualAddressOpen(true); geo.reset(); }}
+                    className="text-xs font-bold underline"
+                  >
+                    Enter address manually
+                  </button>
+                </div>
+              )}
+
+              {/* Manual address textarea. Visible whenever the customer
+                  asks for it OR the GPS path failed. ≥10 chars unblocks
+                  Proceed to Pay; staff verify the rest on delivery. */}
+              {manualAddressOpen && (
+                <div className="space-y-2">
+                  <label className="block">
+                    <span className="block text-xs font-bold uppercase tracking-widest text-on-surface-variant mb-1.5">
+                      Delivery address
+                    </span>
+                    <textarea
+                      value={manualAddress}
+                      onChange={e => setManualAddress(e.target.value)}
+                      rows={3}
+                      placeholder="House / flat no., street, area, landmark"
+                      className="w-full rounded-xl border border-outline-variant/40 bg-surface-container-low px-3 py-2 outline-none focus:border-primary text-on-surface text-sm"
+                      autoFocus
+                    />
+                    <p className="mt-1 text-[11px] text-on-surface-variant">
+                      Type at least the building, street and landmark. Our staff will call you at the gate.
+                    </p>
+                  </label>
+                  {hasManualAddress ? (
+                    <div className="rounded-lg bg-success-tint border border-success/30 px-3 py-2 text-sm text-success-text inline-flex items-center gap-2">
+                      <Icon name="check_circle" size={18} fill className="text-success" />
+                      Address captured — you can proceed to pay.
+                    </div>
+                  ) : (
+                    <p className="text-xs text-on-surface-variant">Need a few more characters to confirm.</p>
+                  )}
+                </div>
               )}
 
               {geo.state.status === 'ready' && restaurantHasLocation && distanceFromRestaurant !== null && (
