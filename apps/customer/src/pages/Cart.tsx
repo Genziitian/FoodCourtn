@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import type { CartLine, OrderType } from '@foodcourt/shared';
 import { calculatePrice, cls, inr, mocks } from '@foodcourt/shared';
-import { useCoupons, useRestaurant, useTable, placeOrder } from '../lib/data';
+import { useCoupons, useMenu, useRestaurant, useTable, placeOrder } from '../lib/data';
 import { useCart } from '../lib/cart';
 import { useAuth } from '../lib/auth';
 import { Icon } from '../components/Icon';
@@ -17,6 +17,11 @@ export default function Cart() {
   const { restaurant } = useRestaurant(slug ?? '');
   const { tableId, tableLabel } = useTable(restaurant?.id, qrToken);
   const coupons = useCoupons(restaurant?.id);
+  // Pull the live menu so we can re-hydrate per-item parcel/delivery
+  // charges on cart lines. The cart line stores a snapshot taken when
+  // the item was added — if the admin set parcel_charge AFTER that, the
+  // stale line keeps 0 and the bill misses the charge. Live menu wins.
+  const { items: menuItems } = useMenu(restaurant?.id);
 
   const cart = useCart(s => s.cart);
   const couponDismissed = useCart(s => s.coupon_dismissed);
@@ -70,16 +75,38 @@ export default function Cart() {
     cart.order_type === 'delivery' &&
     (!restaurantHasLocation || geo.state.status !== 'ready' || !withinRadius);
 
+  // Cart enriched with the latest per-item parcel + delivery charges from
+  // the live menu. The cart store keeps a snapshot taken at add-to-cart
+  // time, which goes stale the moment the admin edits the menu item. We
+  // recompute on every render so the bill always reflects the current
+  // menu config (the source of truth).
+  const pricedCart = useMemo(() => {
+    if (!menuItems.length) return cart;
+    const byId = new Map(menuItems.map(i => [i.id, i] as const));
+    return {
+      ...cart,
+      lines: cart.lines.map(l => {
+        const item = byId.get(l.menu_item_id);
+        if (!item) return l;
+        return {
+          ...l,
+          parcel_charge_per_unit:   Number(item.parcel_charge   ?? l.parcel_charge_per_unit   ?? 0),
+          delivery_charge_per_unit: Number(item.delivery_charge ?? l.delivery_charge_per_unit ?? 0),
+        };
+      }),
+    };
+  }, [cart, menuItems]);
+
   const breakdown = useMemo(() => {
     if (!restaurant) return null;
     return calculatePrice({
-      cart,
+      cart: pricedCart,
       settings: restaurant.settings,
       coupons,
       coinsAvailable,
       freeDelivery: withinFreeZone,
     });
-  }, [cart, restaurant, coupons, coinsAvailable, withinFreeZone]);
+  }, [pricedCart, restaurant, coupons, coinsAvailable, withinFreeZone]);
 
   // Auto-apply the best eligible coupon, but only if:
   //   - the user isn't a guest (guests can't use coupons)
@@ -158,7 +185,9 @@ export default function Cart() {
         table_label: tableLabel,
         customer_id: customerId,
         order_type: cart.order_type,
-        cart,
+        // Pass the re-hydrated cart so the server receives the same
+        // parcel/delivery charges the customer saw in Bill Summary.
+        cart: pricedCart,
         breakdown,
       });
 
