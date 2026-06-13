@@ -35,7 +35,10 @@ export default function Combos() {
   useEffect(() => { refresh(); }, [refresh]);
 
   const combos = useMemo(() => items.filter(i => i.is_combo), [items]);
-  const nonCombos = useMemo(() => items.filter(i => !i.is_combo), [items]);
+  // Combos can include ANY menu item — regardless of category or the is_combo
+  // flag. Filtering by is_combo previously hid items that had been (incorrectly)
+  // flagged combo at some point, so users couldn't pick them. Show everything.
+  const pickableItems = useMemo(() => items, [items]);
   const byId = useMemo(() => {
     const m = new Map<string, MenuItemRow>();
     items.forEach(i => m.set(i.id, i));
@@ -57,7 +60,7 @@ export default function Combos() {
         subtitle={loading ? 'Loading…' : `${combos.length} combo${combos.length === 1 ? '' : 's'} configured`}
         actions={
           <button
-            disabled={!branch || nonCombos.length < 2}
+            disabled={!branch || pickableItems.length < 2}
             onClick={() => setCreating(true)}
             className="inline-flex items-center gap-2 rounded-full bg-brand-600 text-white px-4 py-2 text-sm font-semibold hover:bg-brand-700 disabled:opacity-50"
           >
@@ -74,9 +77,9 @@ export default function Combos() {
       {err && (
         <div className="rounded-xl bg-rose-50 border border-rose-200 px-4 py-3 text-sm text-rose-900">{err}</div>
       )}
-      {branch && nonCombos.length < 2 && !loading && (
+      {branch && pickableItems.length < 2 && !loading && (
         <div className="rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-900">
-          Add at least 2 regular menu items first — a combo bundles two or more items into a single deal.
+          Add at least 2 menu items first — a combo bundles two or more items into a single deal.
         </div>
       )}
 
@@ -90,7 +93,7 @@ export default function Combos() {
                 Bundle 2-3 menu items at a sweet-spot price. Customers see them in a dedicated "Combos" tab and as
                 smart upsells in the cart.
               </p>
-              {nonCombos.length >= 2 && (
+              {pickableItems.length >= 2 && (
                 <button
                   onClick={() => setCreating(true)}
                   className="mt-5 inline-flex items-center gap-2 rounded-full bg-brand-600 text-white px-5 py-2 text-sm font-semibold hover:bg-brand-700"
@@ -190,7 +193,10 @@ export default function Combos() {
         <ComboEditor
           open={creating || !!editing}
           combo={editing}
-          allItems={nonCombos}
+          // Pass every menu item — combos are cross-category and we don't
+          // want to silently hide anything that was once flagged is_combo.
+          // The editor excludes the combo being edited from its own picker.
+          allItems={pickableItems.filter(i => i.id !== editing?.id)}
           categories={cats}
           restaurantId={branch.id}
           onClose={() => { setCreating(false); setEditing(null); }}
@@ -221,6 +227,9 @@ function ComboEditor({
   const [description, setDescription] = useState('');
   const [imageUrl, setImageUrl] = useState('');
   const [price, setPrice] = useState<number>(0);
+  // category_id is required by the DB but combos are cross-category, so we
+  // pick it silently — preserve the existing one on edit, otherwise use any
+  // category that exists for the branch.
   const [categoryId, setCategoryId] = useState<string>('');
   const [inStock, setInStock] = useState(true);
   const [lines, setLines] = useState<ItemLine[]>([]);
@@ -276,10 +285,22 @@ function ComboEditor({
     setLines(prev => prev.filter(l => l.menu_item_id !== id));
   };
 
-  const canSave = name.trim().length >= 2 && price > 0 && lines.length >= 2 && categoryId;
+  const canSave = name.trim().length >= 2 && price > 0 && lines.length >= 2;
+
+  // Best-effort category pick: existing combo's category > first branch
+  // category > the first picked item's category. The customer Menu groups
+  // combos under the 🎁 Combos chip via is_combo, not category, so the
+  // actual category_id is incidental.
+  const resolveCategoryId = () =>
+    categoryId
+    || categories[0]?.id
+    || (lines[0] ? itemById.get(lines[0].menu_item_id)?.category_id : '')
+    || '';
 
   const submit = async () => {
     if (!canSave) return;
+    const finalCategoryId = resolveCategoryId();
+    if (!finalCategoryId) { setErr('Add at least one category in Menu Items first.'); return; }
     setSaving(true); setErr(null);
     try {
       if (isEdit && combo) {
@@ -288,7 +309,7 @@ function ComboEditor({
           description: description.trim() || null,
           image_url: imageUrl.trim() || null,
           base_price: price,
-          category_id: categoryId,
+          category_id: finalCategoryId,
           in_stock: inStock,
           items: lines,
         });
@@ -303,7 +324,7 @@ function ComboEditor({
 
         await createCombo({
           restaurant_id: restaurantId,
-          category_id: categoryId,
+          category_id: finalCategoryId,
           name: name.trim(),
           description: description.trim() || null,
           image_url: imageUrl.trim() || null,
@@ -369,15 +390,7 @@ function ComboEditor({
           </div>
         </Field>
 
-        <Field label="Category">
-          <select
-            value={categoryId} onChange={e => setCategoryId(e.target.value)}
-            className="w-full rounded-lg border border-slate-200 px-3 py-2 outline-none focus:border-brand-500 bg-white"
-          >
-            {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
-        </Field>
-        <div>
+        <div className="md:col-span-2">
           <ImageField
             label="Combo image"
             value={imageUrl}
