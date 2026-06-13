@@ -84,6 +84,8 @@ export function calculatePrice({
   //   TAKEAWAY  → packing/parcel charge per item (e.g. ₹15 per biryani box).
   //               Falls back to settings.packing_charge (flat ₹) when no
   //               line in the cart has a per-unit parcel charge configured.
+  //               Owner can flip `use_flat_parcel_charge` to force the flat
+  //               fee for every takeaway order regardless of per-item config.
   //
   //   DELIVERY  → delivery charge per item (e.g. ₹25 per biryani — hot-bag
   //               + dispatch). Falls back to settings.delivery_fee (flat ₹)
@@ -102,10 +104,12 @@ export function calculatePrice({
     (s, l) => s + (Number(l.delivery_charge_per_unit ?? 0) * l.qty),
     0,
   );
+  const useFlatParcel = settings.use_flat_parcel_charge === true;
   const packingCharge =
     cart.order_type !== 'takeaway' ? 0
-    : perItemParcelSum > 0 ? perItemParcelSum
-    : Number(settings.packing_charge ?? 0);
+    : useFlatParcel ? Number(settings.packing_charge ?? 0)   // owner-forced flat fee
+    : perItemParcelSum > 0 ? perItemParcelSum                // per-item sum wins by default
+    : Number(settings.packing_charge ?? 0);                  // fallback to flat if no per-item set
   const deliveryFee =
     cart.order_type !== 'delivery' ? 0
     : freeDelivery ? 0                           // within the restaurant's free-delivery radius

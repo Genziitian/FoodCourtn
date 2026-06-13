@@ -81,6 +81,7 @@ const DEFAULT_SETTINGS: FormState['settings'] = {
   loyalty_earn_rate: 5,
   loyalty_max_redeem_percent: 10,
   apply_taxes_and_charges: true,
+  use_flat_parcel_charge: false,
   delivery_enabled: false,
   delivery_radius_km: 10,
   delivery_free_until_km: 2,
@@ -505,12 +506,43 @@ function TaxPanel({ form, setS }: { form: FormState; setS: SetS }) {
         </Field>
       </div>
 
-      <Field label="Parcel charge" hint="Automatically added to every Takeaway order. Shown as its own line on the customer bill. Set to 0 to disable.">
-        <div className="relative max-w-xs">
-          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-sm">₹</span>
-          <Input type="number" value={form.settings.packing_charge} onChange={e => setS('packing_charge', Number(e.target.value))} className="pl-7" />
+      {/* Parcel charge configuration for TAKEAWAY orders. Owners pick
+          between two modes: a flat fee that applies to every takeaway
+          order, or per-item charges configured on each menu item. */}
+      <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-4">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="font-semibold text-slate-900">Takeaway parcel charge</p>
+            <p className="text-xs text-slate-600 mt-0.5">
+              Added to every Takeaway order. Choose a single fixed amount, or set per-item charges in Menu Items.
+            </p>
+          </div>
         </div>
-      </Field>
+
+        <Toggle
+          checked={form.settings.use_flat_parcel_charge === true}
+          onChange={v => setS('use_flat_parcel_charge', v)}
+          label="Use one flat parcel charge for all items"
+          description="When on, every Takeaway order pays the flat amount below — per-item parcel charges from the Menu are ignored. Off keeps the per-item behaviour (with the flat amount as a fallback when items don't have one set)."
+        />
+
+        <Field
+          label="Flat parcel charge"
+          hint={form.settings.use_flat_parcel_charge === true
+            ? 'Applied to every Takeaway order. Set to 0 to disable parcel charges entirely.'
+            : 'Used as a fallback when an item has no per-item parcel charge set.'}
+        >
+          <div className="relative max-w-xs">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-sm">₹</span>
+            <Input
+              type="number" min={0} step="1"
+              value={form.settings.packing_charge}
+              onChange={e => setS('packing_charge', Number(e.target.value))}
+              className="pl-7"
+            />
+          </div>
+        </Field>
+      </div>
 
       <div className={cls('transition', !applyTaxes && 'opacity-50 pointer-events-none')}>
         <Toggle

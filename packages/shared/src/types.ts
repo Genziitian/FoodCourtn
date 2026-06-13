@@ -24,6 +24,13 @@ export interface RestaurantSettings {
   // — neither added to the total nor shown on the customer bill summary. The
   // packing/parcel charge on takeaway is unaffected. Defaults to true.
   apply_taxes_and_charges?: boolean;
+  // When true, ALL takeaway orders use the single flat `packing_charge`
+  // regardless of any per-item parcel_charge configured on individual menu
+  // items. Useful when the owner just wants one fee per bag/box for the
+  // whole order — e.g. ₹20 per takeaway order, full stop.
+  // When false (default), each item's parcel_charge × qty is summed, and
+  // `packing_charge` only kicks in as a fallback if no item has one.
+  use_flat_parcel_charge?: boolean;
   // ── Delivery (manual-update, GPS-gated) ───────────────────────────────
   delivery_enabled?: boolean;          // master switch: when false the Delivery tab is hidden
   delivery_radius_km?: number;         // max delivery distance — default 10 km; outside this radius we refuse the order
