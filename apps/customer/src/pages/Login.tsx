@@ -19,7 +19,7 @@ const LOGIN_HEROES = [
 export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { sendOtp, verifyOtp } = useAuth();
+  const { sendOtp, verifyOtp, signInAsGuest } = useAuth();
 
   const redirectTo = (location.state as { from?: string } | null)?.from ?? '/the-spice-route/t/sr-t12';
 
@@ -29,9 +29,27 @@ export default function Login() {
   const [otp, setOtp]     = useState(['', '', '', '', '', '']);
   const [sending, setSending] = useState(false);
   const [verifying, setVerifying] = useState(false);
+  const [guestSubmitting, setGuestSubmitting] = useState(false);
   const [resendIn, setResendIn] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const otpRefs = useRef<Array<HTMLInputElement | null>>([]);
+
+  const continueAsGuest = async () => {
+    setError(null);
+    if (!name.trim()) {
+      setError('Enter your name to continue as guest.');
+      return;
+    }
+    setGuestSubmitting(true);
+    try {
+      await signInAsGuest(name.trim());
+      navigate(redirectTo, { replace: true });
+    } catch (e: any) {
+      setError(e?.message ?? 'Could not continue as guest. Try again.');
+    } finally {
+      setGuestSubmitting(false);
+    }
+  };
 
   useEffect(() => {
     if (step !== 'otp' || resendIn <= 0) return;
@@ -170,7 +188,7 @@ export default function Login() {
 
               <button
                 onClick={sendPhoneOtp}
-                disabled={sending}
+                disabled={sending || guestSubmitting}
                 className={cls('w-full rounded-2xl bg-primary text-on-primary font-display font-bold text-body-lg py-4 shadow-cta active:scale-[0.97] transition flex items-center justify-center gap-2', sending && 'opacity-70')}
               >
                 {sending ? 'Sending OTP…' : (
@@ -180,6 +198,30 @@ export default function Login() {
                   </>
                 )}
               </button>
+
+              {/* "or continue as guest" — name-only sign-in. Phone left blank.
+                  Guests place orders and see their tracking, but coupons,
+                  loyalty coins and promotional offers stay locked. */}
+              <div className="flex items-center gap-3 text-label-sm text-on-surface-variant/70">
+                <span className="flex-1 h-px bg-outline-variant/40" />
+                <span>or</span>
+                <span className="flex-1 h-px bg-outline-variant/40" />
+              </div>
+
+              <button
+                onClick={continueAsGuest}
+                disabled={guestSubmitting || sending}
+                className={cls(
+                  'w-full rounded-2xl border-2 border-outline-variant/50 bg-surface-container-lowest text-on-surface font-display font-bold text-body-lg py-3.5 active:scale-[0.98] transition flex items-center justify-center gap-2',
+                  guestSubmitting && 'opacity-70',
+                )}
+              >
+                <Icon name="person" size={20} />
+                {guestSubmitting ? 'Continuing…' : 'Continue as guest'}
+              </button>
+              <p className="text-center text-[11px] text-on-surface-variant/70">
+                Guests can order without OTP. Coupons, coins, and offers are only for verified accounts.
+              </p>
 
               <div className="text-center text-label-sm text-on-surface-variant">
                 By continuing, you agree to our Terms & Privacy.

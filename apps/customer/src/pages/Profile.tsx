@@ -87,10 +87,17 @@ export default function Profile() {
               </div>
             ) : (
               <>
-                <h2 className="font-display text-headline-md text-on-surface truncate">{user.name}</h2>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h2 className="font-display text-headline-md text-on-surface truncate">{user.name}</h2>
+                  {user.is_guest && (
+                    <span className="text-[10px] uppercase font-bold tracking-wider bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">
+                      Guest
+                    </span>
+                  )}
+                </div>
                 <p className="text-sm text-on-surface-variant inline-flex items-center gap-1.5 mt-0.5">
                   <Icon name="phone" size={14} />
-                  +91 {user.phone}
+                  {user.phone ? <>+91 {user.phone}</> : <span className="italic">No phone — guest mode</span>}
                 </p>
                 <p className="text-label-sm text-on-surface-variant/70 mt-0.5">
                   Member since {new Date(user.joined_at).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })}
@@ -109,11 +116,35 @@ export default function Profile() {
           )}
         </section>
 
-        {/* Stats */}
-        <section className="grid grid-cols-3 gap-2">
-          <StatTile label="Orders"   value={String(user.total_orders)} />
-          <StatTile label="Spent"    value={inr(user.total_spent)} />
-          <StatTile label="Coins"    value={String(user.loyalty_balance)} highlight />
+        {/* Guest upgrade CTA — only shown to guest users */}
+        {user.is_guest && (
+          <section className="card p-4 bg-amber-50 border border-amber-200 flex items-start gap-3">
+            <span className="size-10 grid place-items-center rounded-xl bg-amber-100 text-amber-700 shrink-0">
+              <Icon name="lock_open" size={20} />
+            </span>
+            <div className="flex-1 min-w-0">
+              <p className="font-semibold text-amber-900">Unlock coupons & FoodCoins</p>
+              <p className="text-label-sm text-amber-900/80">
+                Add your phone to earn coins on every order, redeem offers, and pick up where you left off across devices.
+              </p>
+              <button
+                onClick={() => { logout(); navigate('/login', { state: { from: base + '/profile' } }); }}
+                className="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-amber-600 text-white px-4 py-2 text-label-bold font-bold active:scale-95"
+              >
+                <Icon name="phone" size={16} />
+                Sign in with phone
+              </button>
+            </div>
+          </section>
+        )}
+
+        {/* Stats — coins tile is hidden for guests since they can't earn any. */}
+        <section className={cls('grid gap-2', user.is_guest ? 'grid-cols-2' : 'grid-cols-3')}>
+          <StatTile label="Orders" value={String(user.total_orders)} />
+          <StatTile label="Spent"  value={inr(user.total_spent)} />
+          {!user.is_guest && (
+            <StatTile label="Coins" value={String(user.loyalty_balance)} highlight />
+          )}
         </section>
 
         {/* Account */}
@@ -125,12 +156,14 @@ export default function Profile() {
             onClick={() => navigate(`${base}/profile/orders?filter=history`)}
             badge={cartCount > 0 ? `${cartCount} in cart` : undefined}
           />
-          <Row
-            icon="loyalty"
-            label="FoodCoins & Rewards"
-            sub={`${user.loyalty_balance} coins · ≈ ${inr(user.loyalty_balance)}`}
-            onClick={() => navigate(`${base}/profile/coins`)}
-          />
+          {!user.is_guest && (
+            <Row
+              icon="loyalty"
+              label="FoodCoins & Rewards"
+              sub={`${user.loyalty_balance} coins · ≈ ${inr(user.loyalty_balance)}`}
+              onClick={() => navigate(`${base}/profile/coins`)}
+            />
+          )}
         </Group>
 
         {/* Recent orders — completed only, with one-tap re-order */}

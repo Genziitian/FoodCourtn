@@ -33,7 +33,11 @@ export default function Cart() {
   const [showMoreMenu, setShowMoreMenu] = useState(false);
 
   const { customerId, user, refreshLoyalty } = useAuth();
-  const coinsAvailable = user?.loyalty_balance ?? 0;
+  // Guests never see coupons, coins, or promotional offers — only verified
+  // accounts (phone OTP'd) get the perks. Spec: "guest user > coupon or
+  // coin or offer off".
+  const isGuest = user?.is_guest === true;
+  const coinsAvailable = isGuest ? 0 : (user?.loyalty_balance ?? 0);
 
   // ── Delivery: GPS + radius check ─────────────────────────────────────
   // The restaurant opts into delivery from Admin → Settings → Delivery.
@@ -78,17 +82,18 @@ export default function Cart() {
   }, [cart, restaurant, coupons, coinsAvailable, withinFreeZone]);
 
   // Auto-apply the best eligible coupon, but only if:
+  //   - the user isn't a guest (guests can't use coupons)
   //   - no coupon is currently applied
-  //   - user hasn't explicitly dismissed (clicked Remove)
+  //   - the user hasn't explicitly dismissed (clicked Remove)
   // "Best" = largest min_order_value the cart qualifies for.
   useMemo(() => {
-    if (!restaurant || cart.coupon_code || couponDismissed) return;
+    if (isGuest || !restaurant || cart.coupon_code || couponDismissed) return;
     const subtotal = cart.lines.reduce((s, l) => s + l.line_total, 0);
     const eligible = coupons
       .filter(c => c.is_active && subtotal >= c.min_order_value)
       .sort((a, b) => b.min_order_value - a.min_order_value);
     if (eligible.length) setCoupon(eligible[0].code);
-  }, [restaurant, coupons, cart.lines, cart.coupon_code, couponDismissed, setCoupon]);
+  }, [isGuest, restaurant, coupons, cart.lines, cart.coupon_code, couponDismissed, setCoupon]);
 
   const goBack = () => {
     const base = qrToken ? `/${slug}/t/${qrToken}` : `/${slug}`;
@@ -504,26 +509,39 @@ export default function Cart() {
               </div>
             </section>
 
-            {/* Offers & rewards */}
-            <section className="space-y-4">
-              <h2 className="section-label px-1">Offers & Rewards</h2>
+            {/* Offers & rewards — verified accounts only. Guests get a
+                gentle hint that signing in unlocks them. */}
+            {isGuest ? (
+              <section className="card p-4 bg-amber-50 border border-amber-200 flex items-start gap-3">
+                <Icon name="lock" size={20} className="text-amber-700 mt-0.5 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-bold text-amber-900">Offers & rewards locked for guests</p>
+                  <p className="text-label-sm text-amber-900/80 mt-0.5">
+                    Sign in with your phone number to use coupons and earn FoodCoins on every order.
+                  </p>
+                </div>
+              </section>
+            ) : (
+              <section className="space-y-4">
+                <h2 className="section-label px-1">Offers & Rewards</h2>
 
-              <AppliedCouponCard
-                code={breakdown?.applied_coupon?.code ?? null}
-                description={breakdown?.applied_coupon?.description ?? null}
-                savings={breakdown?.discount ?? 0}
-                coupons={coupons}
-                subtotal={cart.lines.reduce((s, l) => s + l.line_total, 0)}
-                onRemove={() => setCoupon(null)}
-                onApply={(code) => setCoupon(code)}
-              />
+                <AppliedCouponCard
+                  code={breakdown?.applied_coupon?.code ?? null}
+                  description={breakdown?.applied_coupon?.description ?? null}
+                  savings={breakdown?.discount ?? 0}
+                  coupons={coupons}
+                  subtotal={cart.lines.reduce((s, l) => s + l.line_total, 0)}
+                  onRemove={() => setCoupon(null)}
+                  onApply={(code) => setCoupon(code)}
+                />
 
-              <CoinsCard
-                balance={coinsAvailable}
-                used={cart.use_coins}
-                onToggle={() => toggleCoins()}
-              />
-            </section>
+                <CoinsCard
+                  balance={coinsAvailable}
+                  used={cart.use_coins}
+                  onToggle={() => toggleCoins()}
+                />
+              </section>
+            )}
           </>
         )}
         </div>

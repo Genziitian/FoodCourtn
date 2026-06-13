@@ -131,12 +131,19 @@ export default function Orders() {
     // kitchens already reference verbally ("table 12, FC-100036"), and it
     // tells the customer that this is a reprint of their order if they
     // ever see it.
+    // Resolve which branch this order belongs to so the receipt header
+     // carries the right restaurant name + phone + address. Falls back to
+     // the tenant's currently-selected branch.
+    const branchForOrder =
+      (branches ?? []).find((b: any) => b.id === o.restaurant_id) ?? branch ?? null;
+
     sharedPrintKot({
       ticket_no: o.code,
       order_code: o.code,
       order_type: o.type,
       table_label: o.table_label,
       customer_name: o.customer_name,
+      customer_phone: o.customer_phone,
       created_at: o.created_at,
       reprint_count: 1,
       items: (o.items ?? []).map(it => ({
@@ -146,6 +153,19 @@ export default function Orders() {
         qty: it.qty,
         notes: it.notes ?? null,
       })),
+      restaurant: branchForOrder ? {
+        name:    (branchForOrder as any).name    ?? null,
+        phone:   (branchForOrder as any).phone   ?? null,
+        address: (branchForOrder as any).address ?? null,
+        logo_url: (branchForOrder as any).logo_url ?? null,
+        gstin:   (branchForOrder as any).gstin   ?? null,
+      } : undefined,
+      totals: {
+        subtotal:       o.subtotal,
+        total:          o.total,
+        discount:       o.discount,
+        payment_status: o.payment_status,
+      },
     });
   };
 

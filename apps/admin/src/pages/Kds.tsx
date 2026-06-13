@@ -96,7 +96,7 @@ export default function Kds() {
   };
 
   const reprint = async (t: KotTicketWithOrder) => {
-    printKot(t);
+    printKot(t, branch);
     try { await incrementReprintCount(t.id, t.reprint_count ?? 0); refresh(); }
     catch (e) { console.warn('reprint count failed', e); }
   };
@@ -420,7 +420,7 @@ function capitalize(s: string) {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-function printKot(t: KotTicketWithOrder) {
+function printKot(t: KotTicketWithOrder, branchForBranding?: any) {
   // Delegate to the shared helper so KDS + Orders print identically.
   const tableLabel = t.table_label_db ?? t.payload?.table_label ?? null;
   const customerName = t.customer_name_db ?? t.payload?.customer_name ?? null;
@@ -433,5 +433,12 @@ function printKot(t: KotTicketWithOrder) {
     created_at: t.created_at,
     reprint_count: t.reprint_count ?? 0,
     items: (t.payload?.items ?? []) as KotPrintItem[],
+    restaurant: branchForBranding ? {
+      name:     branchForBranding.name     ?? null,
+      phone:    branchForBranding.phone    ?? null,
+      address:  branchForBranding.address  ?? null,
+      logo_url: branchForBranding.logo_url ?? null,
+      gstin:    branchForBranding.gstin    ?? null,
+    } : undefined,
   });
 }

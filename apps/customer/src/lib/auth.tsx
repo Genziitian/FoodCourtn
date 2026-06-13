@@ -20,6 +20,12 @@ export interface CustomerUser {
   notify_order_updates: boolean;
   notify_promotions: boolean;
   notify_loyalty: boolean;
+  /**
+   * True when the customer signed in with just a name (no phone / OTP).
+   * Guests can place orders and see their tracking, but coupons,
+   * loyalty coins, and promotional offers are NOT shown to them.
+   */
+  is_guest?: boolean;
 }
 
 export interface Address {
@@ -43,6 +49,8 @@ interface AuthCtx {
   sendOtp: (phone: string) => Promise<{ ok: true }>;
   /** Throws with a human-readable message if OTP is wrong / expired. */
   verifyOtp: (phone: string, code: string, name?: string) => Promise<CustomerUser>;
+  /** Continue as guest: name only, no phone / OTP. */
+  signInAsGuest: (name: string) => Promise<CustomerUser>;
   logout: () => void;
   updateUser: (patch: Partial<CustomerUser>) => void;
   addAddress: (a: Omit<Address, 'id'>) => Promise<void>;
@@ -55,8 +63,14 @@ interface AuthCtx {
 
 const Ctx = createContext<AuthCtx | null>(null);
 
-const KEY_CID  = 'foodcourt-customer-id-v1';
-const KEY_USER = 'foodcourt-customer-user-v1';
+const KEY_CID         = 'foodcourt-customer-id-v1';
+const KEY_USER        = 'foodcourt-customer-user-v1';
+const KEY_USER_TS     = 'foodcourt-customer-user-ts-v1';
+// Keep the customer signed in for 7 days. Per product spec — covers the
+// typical "I ordered last weekend, ordered again this weekend" pattern
+// without forcing them through OTP every visit. After 7 days we drop the
+// session and force re-auth on the next protected route.
+const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 function load<T>(key: string): T | null {
   try { const r = localStorage.getItem(key); return r ? JSON.parse(r) : null; }
@@ -64,6 +78,26 @@ function load<T>(key: string): T | null {
 }
 function save<T>(key: string, v: T) {
   try { localStorage.setItem(key, JSON.stringify(v)); } catch { /* ignore */ }
+}
+
+/**
+ * Returns the persisted user only if it was saved within the last 7 days.
+ * Anything older is treated as logged-out (and cleared from storage so we
+ * don't keep checking the same stale row).
+ */
+function loadFreshUser(): CustomerUser | null {
+  const user = load<CustomerUser>(KEY_USER);
+  if (!user) return null;
+  const tsRaw = localStorage.getItem(KEY_USER_TS);
+  const ts = tsRaw ? Number(tsRaw) : 0;
+  if (!ts || Date.now() - ts > SESSION_TTL_MS) {
+    try {
+      localStorage.removeItem(KEY_USER);
+      localStorage.removeItem(KEY_USER_TS);
+    } catch { /* ignore */ }
+    return null;
+  }
+  return user;
 }
 
 function getOrCreateCustomerId(): string {
@@ -101,11 +135,23 @@ function toUI(a: AddressRow): Address {
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [customerId] = useState<string>(() => getOrCreateCustomerId());
-  const [user, setUser]           = useState<CustomerUser | null>(() => load<CustomerUser>(KEY_USER));
+  const [user, setUser]           = useState<CustomerUser | null>(() => loadFreshUser());
   const [addresses, setAddresses] = useState<Address[]>([]);
   const [loading, setLoading]     = useState(false);
 
-  useEffect(() => { save(KEY_USER, user); }, [user]);
+  // Persist user + bump the freshness timestamp on every change. Reading
+  // back later goes through `loadFreshUser` which enforces the 7-day TTL.
+  useEffect(() => {
+    if (user) {
+      save(KEY_USER, user);
+      try { localStorage.setItem(KEY_USER_TS, String(Date.now())); } catch { /* ignore */ }
+    } else {
+      try {
+        localStorage.removeItem(KEY_USER);
+        localStorage.removeItem(KEY_USER_TS);
+      } catch { /* ignore */ }
+    }
+  }, [user]);
 
   const reloadAddresses = useCallback(async () => {
     try {
@@ -222,6 +268,38 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         notify_order_updates: user?.notify_order_updates ?? true,
         notify_promotions:    user?.notify_promotions    ?? false,
         notify_loyalty:       user?.notify_loyalty       ?? true,
+      };
+      setUser(u);
+      return u;
+    },
+
+    signInAsGuest: async (rawName: string) => {
+      const display = rawName.trim();
+      if (!display) throw new Error('Please enter your name to continue as guest.');
+
+      // Best-effort customer row so reorders / tracking can join back to
+      // the same customerId. We don't fail the guest sign-in if Supabase
+      // is unreachable — the localStorage session is the source of truth.
+      try {
+        await upsertCustomer({ id: customerId, name: display });
+      } catch (e) {
+        console.warn('Could not upsert guest customer row:', e);
+      }
+
+      const u: CustomerUser = {
+        id: customerId,
+        name: display,
+        phone: null,
+        email: null,
+        initials: initials(display),
+        joined_at: new Date().toISOString(),
+        total_orders: user?.total_orders ?? 0,
+        total_spent: user?.total_spent ?? 0,
+        loyalty_balance: 0,                  // guests never see coins
+        notify_order_updates: true,
+        notify_promotions:    false,         // guests don't get promo nudges
+        notify_loyalty:       false,
+        is_guest: true,
       };
       setUser(u);
       return u;
