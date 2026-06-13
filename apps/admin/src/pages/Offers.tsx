@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
-  Calendar, ChevronRight, Clock, Gift, Percent, Plus, Tag, TrendingUp, Trash2,
+  Calendar, ChevronRight, Clock, Gift, Percent, Plus, Tag, TrendingUp, Trash2, Users as UsersIcon,
 } from 'lucide-react';
 import type { CouponType } from '@foodcourt/shared';
 import { cls, inr } from '@foodcourt/shared';
@@ -9,7 +9,7 @@ import { Modal } from '../components/Drawer';
 import { Toggle } from '../components/Toggle';
 import { useTenant } from '../lib/tenant';
 import {
-  listCoupons, createCoupon, setCouponActive, deleteCoupon,
+  listCoupons, createCoupon, setCouponActive, deleteCoupon, getCouponRedemptionStats,
   type CouponRow,
 } from '../lib/api';
 
@@ -23,13 +23,20 @@ const ALL_TYPES = [
 export default function Offers() {
   const { branch, scopedRestaurantIds } = useTenant();
   const [rows, setRows] = useState<CouponRow[]>([]);
+  const [stats, setStats] = useState<Map<string, { redemptions: number; uniqueUsers: number }>>(new Map());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
 
   const refresh = useCallback(async () => {
     setLoading(true); setError(null);
-    try { setRows(await listCoupons(scopedRestaurantIds)); }
+    try {
+      const coupons = await listCoupons(scopedRestaurantIds);
+      setRows(coupons);
+      // Best-effort: stats query may fail on orgs with strict RLS; UI still works without it.
+      try { setStats(await getCouponRedemptionStats(coupons.map(c => c.id))); }
+      catch { /* leave previous stats */ }
+    }
     catch (e: any) { setError(e.message ?? 'Failed to load offers'); }
     finally { setLoading(false); }
   }, [scopedRestaurantIds]);
@@ -103,6 +110,8 @@ export default function Offers() {
                 <th className="px-6 py-3">Code</th>
                 <th className="px-6 py-3">Description</th>
                 <th className="px-6 py-3 text-right">Used</th>
+                <th className="px-6 py-3 text-right">Unique users</th>
+                <th className="px-6 py-3 text-right">Per-user limit</th>
                 <th className="px-6 py-3 text-right">Min order</th>
                 <th className="px-6 py-3 text-center">Active</th>
                 <th className="px-6 py-3"></th>
@@ -118,7 +127,18 @@ export default function Offers() {
                     </span>
                   </td>
                   <td className="px-6 py-3 text-slate-700">{c.description ?? '—'}</td>
-                  <td className="px-6 py-3 text-right font-semibold">{c.used_count}</td>
+                  <td className="px-6 py-3 text-right font-semibold">{stats.get(c.id)?.redemptions ?? c.used_count ?? 0}</td>
+                  <td className="px-6 py-3 text-right text-slate-700 font-semibold">
+                    <span className="inline-flex items-center gap-1">
+                      <UsersIcon className="size-3.5 text-slate-400" />
+                      {stats.get(c.id)?.uniqueUsers ?? 0}
+                    </span>
+                  </td>
+                  <td className="px-6 py-3 text-right">
+                    {c.per_user_limit == null
+                      ? <span className="text-slate-400 text-xs">Unlimited</span>
+                      : <span className="font-semibold">{c.per_user_limit}× / user</span>}
+                  </td>
                   <td className="px-6 py-3 text-right text-slate-600">{c.min_order_value ? inr(c.min_order_value) : '—'}</td>
                   <td className="px-6 py-3">
                     <div className="grid place-items-center">
@@ -210,6 +230,7 @@ function CreateCouponModal({
   const [maxDiscount, setMaxDiscount] = useState(100);
   const [validFrom, setValidFrom] = useState('');
   const [validTo, setValidTo] = useState('');
+  const [perUserLimit, setPerUserLimit] = useState<string>('');   // '' = unlimited
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -233,8 +254,9 @@ function CreateCouponModal({
         max_discount: type === 'percent' ? maxDiscount : null,
         valid_from: validFrom ? new Date(validFrom).toISOString() : null,
         valid_to: validTo ? new Date(validTo).toISOString() : null,
+        per_user_limit: perUserLimit === '' ? null : Math.max(1, Number(perUserLimit)),
       });
-      setCode(''); setValue(20); setMinOrder(0); setMaxDiscount(100); setValidFrom(''); setValidTo('');
+      setCode(''); setValue(20); setMinOrder(0); setMaxDiscount(100); setValidFrom(''); setValidTo(''); setPerUserLimit('');
       onCreated();
     } catch (e: any) {
       setErr(e.message ?? 'Could not create coupon');
@@ -327,6 +349,21 @@ function CreateCouponModal({
             <input type="date" value={validTo} onChange={e => setValidTo(e.target.value)} className="w-full rounded-lg border border-slate-200 pl-9 pr-3 py-2 outline-none focus:border-brand-500" />
           </div></Field>
         </div>
+
+        <Field label="Per-user limit">
+          <div className="relative">
+            <input
+              type="number" min={1} step={1}
+              value={perUserLimit}
+              onChange={e => setPerUserLimit(e.target.value.replace(/\D/g, ''))}
+              placeholder="Unlimited"
+              className="w-full rounded-lg border border-slate-200 px-3 py-2 outline-none focus:border-brand-500"
+            />
+          </div>
+          <p className="mt-1 text-xs text-slate-500">
+            Max times a single customer can use this coupon. Leave blank for unlimited. Set to <code className="font-mono">1</code> for a one-time-per-user promo.
+          </p>
+        </Field>
       </div>
     </Modal>
   );

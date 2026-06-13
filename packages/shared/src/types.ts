@@ -216,6 +216,7 @@ export interface Coupon {
   valid_to: string | null;
   applies_to: OrderType[];
   conditions: Record<string, unknown>;
+  per_user_limit?: number | null;   // max times a single customer can redeem; null = unlimited
   is_active: boolean;
 }
 

@@ -7,6 +7,7 @@ import { cls, inr } from '@foodcourt/shared';
 import { PageHeader } from '../components/PageHeader';
 import { Toggle } from '../components/Toggle';
 import { Drawer } from '../components/Drawer';
+import { ImageField } from '../components/ImageField';
 import { useTenant } from '../lib/tenant';
 import {
   listMenuItems, listCategories, createMenuItem, updateMenuItem,
@@ -968,25 +969,13 @@ function ItemEditorInner({
           </div>
         </Field>
 
-        <div className="grid grid-cols-2 gap-4">
-          <Field label="Image URL">
-            <input
-              value={draft.image_url ?? ''}
-              onChange={e => set('image_url', e.target.value || null)}
-              placeholder="https://..."
-              className="w-full rounded-lg border border-slate-200 px-3 py-2 outline-none focus:border-brand-500"
-            />
-          </Field>
-          <Field label="Preview">
-            {draft.image_url ? (
-              <img src={draft.image_url} alt="" className="size-16 rounded-lg object-cover" />
-            ) : (
-              <div className="size-16 rounded-lg bg-slate-100 grid place-items-center">
-                <ImageIcon className="size-5 text-slate-400" />
-              </div>
-            )}
-          </Field>
-        </div>
+        <ImageField
+          label="Food image"
+          value={draft.image_url ?? ''}
+          onChange={url => set('image_url', url || null)}
+          restaurantId={draft.restaurant_id || ''}
+          placeholder="https://… or upload from device"
+        />
 
         <section className="bg-slate-50 rounded-xl p-4 space-y-3">
           <h3 className="text-sm font-bold">Flags</h3>

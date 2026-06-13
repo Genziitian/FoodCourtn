@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import type { CartLine, OrderType } from '@foodcourt/shared';
 import { calculatePrice, cls, inr, mocks } from '@foodcourt/shared';
@@ -7,7 +7,7 @@ import { useCart } from '../lib/cart';
 import { useAuth } from '../lib/auth';
 import { Icon } from '../components/Icon';
 import { BottomNav } from '../components/BottomNav';
-import { getBranchPaymentKey, awardOrderCoins } from '../lib/api';
+import { getBranchPaymentKey, awardOrderCoins, getCustomerCouponUsage } from '../lib/api';
 import { openRazorpay } from '../lib/razorpay';
 import { distanceKm, useGeolocation } from '../lib/geo';
 
@@ -151,19 +151,37 @@ export default function Cart() {
     });
   }, [pricedCart, restaurant, coupons, coinsAvailable, withinFreeZone]);
 
+  // Per-customer redemption count — used to enforce coupons[].per_user_limit.
+  // Fetched once when customer + restaurant are known; refreshed when either
+  // changes. Best-effort: empty map on error so checkout never blocks here.
+  const [couponUsage, setCouponUsage] = useState<Map<string, number>>(new Map());
+  useEffect(() => {
+    if (!customerId || isGuest) { setCouponUsage(new Map()); return; }
+    let cancelled = false;
+    getCustomerCouponUsage(customerId).then(m => { if (!cancelled) setCouponUsage(m); });
+    return () => { cancelled = true; };
+  }, [customerId, isGuest]);
+
   // Auto-apply the best eligible coupon, but only if:
   //   - the user isn't a guest (guests can't use coupons)
   //   - no coupon is currently applied
   //   - the user hasn't explicitly dismissed (clicked Remove)
+  //   - the customer hasn't already hit per_user_limit on it
   // "Best" = largest min_order_value the cart qualifies for.
   useMemo(() => {
     if (isGuest || !restaurant || cart.coupon_code || couponDismissed) return;
     const subtotal = cart.lines.reduce((s, l) => s + l.line_total, 0);
     const eligible = coupons
       .filter(c => c.is_active && subtotal >= c.min_order_value)
+      .filter(c => {
+        const limit = c.per_user_limit ?? null;
+        if (limit == null) return true;            // unlimited
+        const used = couponUsage.get(c.id) ?? 0;
+        return used < limit;
+      })
       .sort((a, b) => b.min_order_value - a.min_order_value);
     if (eligible.length) setCoupon(eligible[0].code);
-  }, [isGuest, restaurant, coupons, cart.lines, cart.coupon_code, couponDismissed, setCoupon]);
+  }, [isGuest, restaurant, coupons, cart.lines, cart.coupon_code, couponDismissed, setCoupon, couponUsage]);
 
   const goBack = () => {
     const base = qrToken ? `/${slug}/t/${qrToken}` : `/${slug}`;

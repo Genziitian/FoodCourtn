@@ -126,6 +126,27 @@ export async function getCoupons(restaurantId: string): Promise<Coupon[]> {
   return (data ?? []) as Coupon[];
 }
 
+/**
+ * Map of coupon_id → number of times THIS customer has redeemed that coupon
+ * (excluding cancelled orders). Used to enforce per_user_limit at apply time
+ * so a one-time-use coupon doesn't auto-apply on the customer's second order.
+ */
+export async function getCustomerCouponUsage(customerId: string): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  if (!customerId) return out;
+  const { data, error } = await client()
+    .from('orders')
+    .select('coupon_id, status')
+    .eq('customer_id', customerId)
+    .not('coupon_id', 'is', null);
+  if (error) return out;        // best-effort: don't block checkout on this
+  (data ?? []).forEach((r: any) => {
+    if (!r.coupon_id || r.status === 'cancelled') return;
+    out.set(r.coupon_id, (out.get(r.coupon_id) ?? 0) + 1);
+  });
+  return out;
+}
+
 // ────────────────────────────────────────────────────────────
 // Orders — place + read + realtime
 // ────────────────────────────────────────────────────────────

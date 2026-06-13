@@ -3,6 +3,7 @@ import { Pencil, Plus, Sparkles, Trash2, X } from 'lucide-react';
 import { cls, inr } from '@foodcourt/shared';
 import { PageHeader } from '../components/PageHeader';
 import { Modal } from '../components/Drawer';
+import { ImageField } from '../components/ImageField';
 import { useTenant } from '../lib/tenant';
 import {
   listMenuItems, listCategories, createCombo, updateCombo, deleteCombo,
@@ -376,13 +377,15 @@ function ComboEditor({
             {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
         </Field>
-        <Field label="Image URL (optional)">
-          <input
-            value={imageUrl} onChange={e => setImageUrl(e.target.value)}
-            placeholder="https://…"
-            className="w-full rounded-lg border border-slate-200 px-3 py-2 outline-none focus:border-brand-500"
+        <div>
+          <ImageField
+            label="Combo image"
+            value={imageUrl}
+            onChange={setImageUrl}
+            restaurantId={restaurantId}
+            placeholder="https://… or upload"
           />
-        </Field>
+        </div>
 
         <div className="md:col-span-2">
           <Field label="Description (optional)">

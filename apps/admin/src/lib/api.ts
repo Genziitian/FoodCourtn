@@ -651,6 +651,28 @@ export async function setMenuItemInStock(id: string, in_stock: boolean) {
   if (error) throw error;
 }
 
+/**
+ * Upload a food photo from the device. Stored in the `menu-images` bucket
+ * (public read) so the customer app can render it directly. Returns the
+ * public URL — caller writes it to menu_items.image_url.
+ *
+ * Requires the storage bucket + policies from `add_menu_images_bucket.sql`.
+ */
+export async function uploadMenuImage(restaurantId: string, file: File): Promise<string> {
+  if (!/^image\//.test(file.type)) throw new Error('Please choose an image file.');
+  if (file.size > 5 * 1024 * 1024) throw new Error('Image must be under 5 MB.');
+
+  const ext = (file.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
+  const path = `${restaurantId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+  const c = client();
+  const { error } = await c.storage
+    .from('menu-images')
+    .upload(path, file, { upsert: false, contentType: file.type || 'image/jpeg' });
+  if (error) throw error;
+  const { data } = c.storage.from('menu-images').getPublicUrl(path);
+  return data.publicUrl;
+}
+
 // ────────────────────────────────────────────────────────────
 // Combos — a combo is a menu_items row with is_combo=true and a
 // combo_items jsonb array pointing at its constituent items.
@@ -748,25 +770,64 @@ export interface CouponRow {
   valid_from: string | null;
   valid_to: string | null;
   usage_limit: number | null;
+  per_user_limit: number | null;   // null = unlimited per customer
   used_count: number;
   is_active: boolean;
 }
 
 export async function listCoupons(restaurantIds: string[]): Promise<CouponRow[]> {
-  let q = client()
-    .from('coupons')
-    .select('id, restaurant_id, code, description, type, value, min_order_value, max_discount, valid_from, valid_to, usage_limit, used_count, is_active')
-    .order('created_at', { ascending: false });
-  if (restaurantIds.length) q = q.in('restaurant_id', restaurantIds);
-  const { data, error } = await q;
+  // per_user_limit is optional — fall back to the older select if the column
+  // hasn't been migrated yet so this page still loads.
+  const fullSelect = 'id, restaurant_id, code, description, type, value, min_order_value, max_discount, valid_from, valid_to, usage_limit, per_user_limit, used_count, is_active';
+  const legacySelect = 'id, restaurant_id, code, description, type, value, min_order_value, max_discount, valid_from, valid_to, usage_limit, used_count, is_active';
+
+  const run = async (sel: string) => {
+    let q = client().from('coupons').select(sel).order('created_at', { ascending: false });
+    if (restaurantIds.length) q = q.in('restaurant_id', restaurantIds);
+    return q;
+  };
+
+  let { data, error } = await run(fullSelect) as any;
+  if (error && /column .*per_user_limit/i.test(error.message ?? '')) {
+    ({ data, error } = await run(legacySelect) as any);
+  }
   if (error) throw error;
   return (data ?? []).map((c: any) => ({
     ...c,
     value: c.value === null ? null : Number(c.value),
     min_order_value: Number(c.min_order_value ?? 0),
     max_discount: c.max_discount === null ? null : Number(c.max_discount),
+    per_user_limit: c.per_user_limit ?? null,
     used_count: c.used_count ?? 0,
   })) as CouponRow[];
+}
+
+/**
+ * For each coupon id, returns total redemptions and unique customer count
+ * (derived from non-cancelled orders). Used by the admin Offers page to show
+ * "5 redemptions by 3 unique users" alongside the per-user limit setting.
+ */
+export async function getCouponRedemptionStats(
+  couponIds: string[],
+): Promise<Map<string, { redemptions: number; uniqueUsers: number }>> {
+  const out = new Map<string, { redemptions: number; uniqueUsers: number }>();
+  if (!couponIds.length) return out;
+  const { data, error } = await client()
+    .from('orders')
+    .select('coupon_id, customer_id, status')
+    .in('coupon_id', couponIds);
+  if (error) throw error;
+
+  const acc = new Map<string, { redemptions: number; users: Set<string> }>();
+  (data ?? []).forEach((r: any) => {
+    if (!r.coupon_id || r.status === 'cancelled') return;
+    const cur = acc.get(r.coupon_id) ?? { redemptions: 0, users: new Set<string>() };
+    cur.redemptions++;
+    if (r.customer_id) cur.users.add(r.customer_id);
+    acc.set(r.coupon_id, cur);
+  });
+  acc.forEach((v, k) => out.set(k, { redemptions: v.redemptions, uniqueUsers: v.users.size }));
+  return out;
 }
 
 export async function createCoupon(input: {
@@ -779,25 +840,44 @@ export async function createCoupon(input: {
   max_discount?: number | null;
   valid_from?: string | null;
   valid_to?: string | null;
+  per_user_limit?: number | null;
 }): Promise<CouponRow> {
-  const { data, error } = await client()
+  const payload: any = {
+    restaurant_id: input.restaurant_id,
+    code: input.code,
+    description: input.description,
+    type: input.type,
+    value: input.value,
+    min_order_value: input.min_order_value ?? 0,
+    max_discount: input.max_discount ?? null,
+    valid_from: input.valid_from ?? null,
+    valid_to: input.valid_to ?? null,
+    is_active: true,
+  };
+  if (input.per_user_limit !== undefined) payload.per_user_limit = input.per_user_limit;
+
+  // Try with per_user_limit; if the column hasn't been migrated, retry without.
+  let { data, error } = await client()
     .from('coupons')
-    .insert({
-      restaurant_id: input.restaurant_id,
-      code: input.code,
-      description: input.description,
-      type: input.type,
-      value: input.value,
-      min_order_value: input.min_order_value ?? 0,
-      max_discount: input.max_discount ?? null,
-      valid_from: input.valid_from ?? null,
-      valid_to: input.valid_to ?? null,
-      is_active: true,
-    })
-    .select('id, restaurant_id, code, description, type, value, min_order_value, max_discount, valid_from, valid_to, usage_limit, used_count, is_active')
-    .single();
+    .insert(payload)
+    .select('id, restaurant_id, code, description, type, value, min_order_value, max_discount, valid_from, valid_to, usage_limit, per_user_limit, used_count, is_active')
+    .single() as any;
+
+  if (error && /column .*per_user_limit/i.test(error.message ?? '')) {
+    delete payload.per_user_limit;
+    ({ data, error } = await client()
+      .from('coupons')
+      .insert(payload)
+      .select('id, restaurant_id, code, description, type, value, min_order_value, max_discount, valid_from, valid_to, usage_limit, used_count, is_active')
+      .single() as any);
+  }
   if (error) throw error;
   return data as CouponRow;
+}
+
+export async function updateCoupon(id: string, patch: Partial<Pick<CouponRow, 'per_user_limit' | 'min_order_value' | 'max_discount' | 'value' | 'valid_from' | 'valid_to' | 'description'>>) {
+  const { error } = await client().from('coupons').update(patch).eq('id', id);
+  if (error) throw error;
 }
 
 export async function setCouponActive(id: string, is_active: boolean) {
