@@ -3,7 +3,7 @@ import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import {
   Bell, Calendar, Check as CheckIcon, ChevronDown, ChevronRight, CreditCard,
   Download, LayoutGrid, LogOut, MapPin, Monitor, RefreshCcw, Search,
-  Settings, Shield, ShoppingBag, Tag, Coins, Utensils, QrCode, Users, UserCog,
+  Settings, Shield, ShoppingBag, Sparkles, Tag, Coins, Utensils, QrCode, Users, UserCog,
   ChartBar, MessageSquare, Check,
 } from 'lucide-react';
 import { cls } from '@foodcourt/shared';
@@ -59,6 +59,7 @@ function Sidebar() {
         </NavSection>
         <NavSection title="Menu">
           <NavItem to="/menu"          icon={Utensils} label="Menu Items" />
+          <NavItem to="/combos"        icon={Sparkles} label="Combos" />
           <NavItem to="/offers"        icon={Tag}      label="Offers & Coupons" badge={3} />
           <NavItem to="/loyalty"       icon={Coins}    label="Loyalty Coins" />
         </NavSection>

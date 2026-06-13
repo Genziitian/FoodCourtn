@@ -472,6 +472,7 @@ export interface MenuItemRow {
   is_bestseller: boolean;
   is_recommended: boolean;
   is_combo?: boolean;           // marks this row as a combo / value deal
+  combo_items?: Array<{ menu_item_id: string; quantity: number }>;
   in_stock: boolean;
   sort_order: number;
   category_name?: string;
@@ -482,7 +483,8 @@ export async function listMenuItems(restaurantId: string): Promise<MenuItemRow[]
   // optional charge columns hasn't been migrated yet.
   // is_combo is appended to each select string. If the column is missing
   // the fallback below catches it via the same column-error sniffer.
-  const fullSelect = 'id, restaurant_id, category_id, name, description, image_url, base_price, parcel_charge, delivery_charge, food_type, rating, rating_count, is_bestseller, is_recommended, is_combo, in_stock, sort_order, categories(name)';
+  const fullSelect = 'id, restaurant_id, category_id, name, description, image_url, base_price, parcel_charge, delivery_charge, food_type, rating, rating_count, is_bestseller, is_recommended, is_combo, combo_items, in_stock, sort_order, categories(name)';
+  const noComboItemsSelect = 'id, restaurant_id, category_id, name, description, image_url, base_price, parcel_charge, delivery_charge, food_type, rating, rating_count, is_bestseller, is_recommended, is_combo, in_stock, sort_order, categories(name)';
   const parcelOnlySelect = 'id, restaurant_id, category_id, name, description, image_url, base_price, parcel_charge, food_type, rating, rating_count, is_bestseller, is_recommended, is_combo, in_stock, sort_order, categories(name)';
   const minimalSelect = 'id, restaurant_id, category_id, name, description, image_url, base_price, food_type, rating, rating_count, is_bestseller, is_recommended, in_stock, sort_order, categories(name)';
 
@@ -496,6 +498,13 @@ export async function listMenuItems(restaurantId: string): Promise<MenuItemRow[]
     .eq('restaurant_id', restaurantId)
     .order('sort_order'));
 
+  if (error && /column .*combo_items/i.test(error.message ?? '')) {
+    ({ data, error } = await client()
+      .from('menu_items')
+      .select(noComboItemsSelect)
+      .eq('restaurant_id', restaurantId)
+      .order('sort_order'));
+  }
   if (error && /column .*(delivery_charge|is_combo)/i.test(error.message ?? '')) {
     ({ data, error } = await client()
       .from('menu_items')
@@ -531,6 +540,7 @@ function mapRow(r: any): MenuItemRow {
     is_bestseller: !!r.is_bestseller,
     is_recommended: !!r.is_recommended,
     is_combo: !!r.is_combo,
+    combo_items: Array.isArray(r.combo_items) ? r.combo_items : [],
     in_stock: r.in_stock !== false,
     sort_order: r.sort_order ?? 0,
     category_name: r.categories?.name ?? undefined,
@@ -639,6 +649,87 @@ export async function deleteMenuItem(id: string) {
 export async function setMenuItemInStock(id: string, in_stock: boolean) {
   const { error } = await client().from('menu_items').update({ in_stock }).eq('id', id);
   if (error) throw error;
+}
+
+// ────────────────────────────────────────────────────────────
+// Combos — a combo is a menu_items row with is_combo=true and a
+// combo_items jsonb array pointing at its constituent items.
+// ────────────────────────────────────────────────────────────
+
+export interface ComboInput {
+  restaurant_id: string;
+  category_id: string;          // any category — combos appear under their own filter on customer
+  name: string;
+  description?: string | null;
+  image_url?: string | null;
+  base_price: number;           // combo bundle price (usually less than sum of parts)
+  food_type: FoodType;
+  in_stock?: boolean;
+  items: Array<{ menu_item_id: string; quantity: number }>;
+}
+
+export async function createCombo(input: ComboInput): Promise<MenuItemRow> {
+  const items = input.items.filter(i => i.menu_item_id && i.quantity > 0);
+  if (items.length < 2) throw new Error('A combo needs at least 2 items.');
+
+  const { data, error } = await client()
+    .from('menu_items')
+    .insert({
+      restaurant_id: input.restaurant_id,
+      category_id: input.category_id,
+      name: input.name,
+      description: input.description ?? null,
+      image_url: input.image_url ?? null,
+      base_price: input.base_price,
+      food_type: input.food_type,
+      is_bestseller: false,
+      is_recommended: false,
+      is_combo: true,
+      combo_items: items,
+      in_stock: input.in_stock ?? true,
+      sort_order: 0,
+    })
+    .select('id, restaurant_id, category_id, name, description, image_url, base_price, food_type, rating, rating_count, is_bestseller, is_recommended, is_combo, combo_items, in_stock, sort_order')
+    .single();
+  if (error) throw error;
+  return mapRow(data);
+}
+
+export async function updateCombo(id: string, patch: {
+  name?: string;
+  description?: string | null;
+  image_url?: string | null;
+  base_price?: number;
+  category_id?: string;
+  in_stock?: boolean;
+  items?: Array<{ menu_item_id: string; quantity: number }>;
+}) {
+  const payload: any = {};
+  if (patch.name !== undefined)        payload.name = patch.name;
+  if (patch.description !== undefined) payload.description = patch.description;
+  if (patch.image_url !== undefined)   payload.image_url = patch.image_url;
+  if (patch.base_price !== undefined)  payload.base_price = patch.base_price;
+  if (patch.category_id !== undefined) payload.category_id = patch.category_id;
+  if (patch.in_stock !== undefined)    payload.in_stock = patch.in_stock;
+  if (patch.items !== undefined) {
+    const clean = patch.items.filter(i => i.menu_item_id && i.quantity > 0);
+    if (clean.length < 2) throw new Error('A combo needs at least 2 items.');
+    payload.combo_items = clean;
+  }
+
+  const { error } = await client().from('menu_items').update(payload).eq('id', id);
+  if (error) throw error;
+}
+
+export async function deleteCombo(id: string) {
+  // Same delete path as a regular menu item — the FK cascade migration covers it.
+  const { error } = await client().from('menu_items').delete().eq('id', id);
+  if (error) throw error;
+}
+
+export async function listCombos(restaurantId: string): Promise<MenuItemRow[]> {
+  const all = await listMenuItems(restaurantId);
+  return all.filter(i => i.is_combo);
 }
 
 // ────────────────────────────────────────────────────────────

@@ -4,6 +4,7 @@ import SuperAdminLayout from './layout/SuperAdminLayout';
 import Dashboard from './pages/Dashboard';
 import Orders from './pages/Orders';
 import MenuItems from './pages/MenuItems';
+import Combos from './pages/Combos';
 import Offers from './pages/Offers';
 import Loyalty from './pages/Loyalty';
 import Tables from './pages/Tables';
@@ -49,6 +50,7 @@ export default function App() {
           <Route path="/kds"             element={<Kds />} />
           <Route path="/tables"          element={<Tables />} />
           <Route path="/menu"            element={<MenuItems />} />
+          <Route path="/combos"          element={<Combos />} />
           <Route path="/offers"          element={<Offers />} />
           <Route path="/loyalty"         element={<Loyalty />} />
           <Route path="/customers"       element={<Customers />} />

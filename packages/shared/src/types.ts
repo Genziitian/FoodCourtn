@@ -186,6 +186,7 @@ export interface MenuItem {
   is_recommended: boolean;
   is_chef_special: boolean;
   is_combo?: boolean;        // shown in the dedicated "Combos" tab + drives the cart smart-sell suggestion
+  combo_items?: Array<{ menu_item_id: string; quantity: number }>;  // constituent items for is_combo rows
   in_stock: boolean;
   sort_order: number;
   // spice level options shown as a segmented control on the detail modal
