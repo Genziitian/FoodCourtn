@@ -86,6 +86,38 @@ export default function Cart() {
     !hasManualAddress &&
     (!restaurantHasLocation || geo.state.status !== 'ready' || !withinRadius);
 
+  // Smart-sell engine. When the customer's subtotal is within ₹60 of any
+  // combo on the menu (and the combo isn't already in the cart), surface a
+  // single "upgrade to combo for ₹X more" banner. Cap to the cheapest gap
+  // so we don't nag with multiple suggestions.
+  const subtotalForUpsell = cart.lines.reduce((s, l) => s + l.line_total, 0);
+  const comboSuggestion = useMemo(() => {
+    const cartItemIds = new Set(cart.lines.map(l => l.menu_item_id));
+    const candidates = menuItems
+      .filter(it => it.is_combo === true && !cartItemIds.has(it.id))
+      .map(it => ({ item: it, gap: Number(it.base_price) - subtotalForUpsell }))
+      .filter(c => c.gap >= 0 && c.gap <= 60)
+      .sort((a, b) => a.gap - b.gap);
+    return candidates[0] ?? null;
+  }, [menuItems, cart.lines, subtotalForUpsell]);
+
+  const addComboToCart = (item: typeof comboSuggestion extends null ? never : NonNullable<typeof comboSuggestion>['item']) => {
+    addLine({
+      menu_item_id: item.id,
+      item_name: item.name,
+      image_url: item.image_url ?? null,
+      food_type: item.food_type,
+      variant_id: null,
+      variant_name: null,
+      modifiers: [],
+      spice_level: null,
+      qty: 1,
+      unit_price: Number(item.base_price),
+      parcel_charge_per_unit:   Number(item.parcel_charge   ?? 0),
+      delivery_charge_per_unit: Number(item.delivery_charge ?? 0),
+    });
+  };
+
   // Cart enriched with the latest per-item parcel + delivery charges from
   // the live menu. The cart store keeps a snapshot taken at add-to-cart
   // time, which goes stale the moment the admin edits the menu item. We
@@ -601,6 +633,36 @@ export default function Cart() {
                 ))}
               </div>
             </section>
+
+            {/* Smart-sell: combo upgrade suggestion. Shown when the customer
+                is within ₹60 of a combo on the menu. One-tap "Add combo"
+                appends it as a new cart line; the customer can still
+                remove the regular items if they prefer the combo alone. */}
+            {comboSuggestion && (
+              <section className="rounded-2xl bg-gradient-to-br from-amber-50 to-orange-100 border border-amber-300 p-4 flex items-start gap-3 shadow-sm">
+                <span className="size-12 grid place-items-center rounded-xl bg-amber-200/70 text-2xl shrink-0" aria-hidden>
+                  🎁
+                </span>
+                <div className="flex-1 min-w-0 space-y-2">
+                  <div>
+                    <p className="font-display font-bold text-amber-900 text-body-md">
+                      Add just {inr(comboSuggestion.gap)} to upgrade to a Combo
+                    </p>
+                    <p className="text-label-sm text-amber-900/85">
+                      <strong>{comboSuggestion.item.name}</strong> — {inr(Number(comboSuggestion.item.base_price))}
+                      {comboSuggestion.item.description ? ` · ${comboSuggestion.item.description.slice(0, 60)}` : ''}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => addComboToCart(comboSuggestion.item)}
+                    className="rounded-xl bg-amber-600 text-white font-bold text-label-bold px-4 py-2 inline-flex items-center gap-1.5 active:scale-95"
+                  >
+                    <Icon name="add_shopping_cart" size={16} />
+                    Add combo for {inr(Number(comboSuggestion.item.base_price))}
+                  </button>
+                </div>
+              </section>
+            )}
 
             {/* Complete Your Meal */}
             <section className="space-y-md">

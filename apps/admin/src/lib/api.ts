@@ -471,6 +471,7 @@ export interface MenuItemRow {
   rating_count: number;
   is_bestseller: boolean;
   is_recommended: boolean;
+  is_combo?: boolean;           // marks this row as a combo / value deal
   in_stock: boolean;
   sort_order: number;
   category_name?: string;
@@ -479,8 +480,10 @@ export interface MenuItemRow {
 export async function listMenuItems(restaurantId: string): Promise<MenuItemRow[]> {
   // Try the richest select first; fall back progressively if either of the
   // optional charge columns hasn't been migrated yet.
-  const fullSelect = 'id, restaurant_id, category_id, name, description, image_url, base_price, parcel_charge, delivery_charge, food_type, rating, rating_count, is_bestseller, is_recommended, in_stock, sort_order, categories(name)';
-  const parcelOnlySelect = 'id, restaurant_id, category_id, name, description, image_url, base_price, parcel_charge, food_type, rating, rating_count, is_bestseller, is_recommended, in_stock, sort_order, categories(name)';
+  // is_combo is appended to each select string. If the column is missing
+  // the fallback below catches it via the same column-error sniffer.
+  const fullSelect = 'id, restaurant_id, category_id, name, description, image_url, base_price, parcel_charge, delivery_charge, food_type, rating, rating_count, is_bestseller, is_recommended, is_combo, in_stock, sort_order, categories(name)';
+  const parcelOnlySelect = 'id, restaurant_id, category_id, name, description, image_url, base_price, parcel_charge, food_type, rating, rating_count, is_bestseller, is_recommended, is_combo, in_stock, sort_order, categories(name)';
   const minimalSelect = 'id, restaurant_id, category_id, name, description, image_url, base_price, food_type, rating, rating_count, is_bestseller, is_recommended, in_stock, sort_order, categories(name)';
 
   // Cast both `data` and `error` to `any` because each fallback SELECT
@@ -493,14 +496,14 @@ export async function listMenuItems(restaurantId: string): Promise<MenuItemRow[]
     .eq('restaurant_id', restaurantId)
     .order('sort_order'));
 
-  if (error && /column .*delivery_charge/i.test(error.message ?? '')) {
+  if (error && /column .*(delivery_charge|is_combo)/i.test(error.message ?? '')) {
     ({ data, error } = await client()
       .from('menu_items')
       .select(parcelOnlySelect)
       .eq('restaurant_id', restaurantId)
       .order('sort_order'));
   }
-  if (error && /column .*parcel_charge/i.test(error.message ?? '')) {
+  if (error && /column .*(parcel_charge|is_combo)/i.test(error.message ?? '')) {
     ({ data, error } = await client()
       .from('menu_items')
       .select(minimalSelect)
@@ -527,6 +530,7 @@ function mapRow(r: any): MenuItemRow {
     rating_count: r.rating_count ?? 0,
     is_bestseller: !!r.is_bestseller,
     is_recommended: !!r.is_recommended,
+    is_combo: !!r.is_combo,
     in_stock: r.in_stock !== false,
     sort_order: r.sort_order ?? 0,
     category_name: r.categories?.name ?? undefined,
@@ -566,6 +570,7 @@ export async function createMenuItem(
     in_stock: input.in_stock,
     sort_order: input.sort_order,
   };
+  if (input.is_combo !== undefined) payload.is_combo = input.is_combo;
   if (extras.strike_price    !== undefined) payload.strike_price    = extras.strike_price;
   if (extras.parcel_charge   !== undefined) payload.parcel_charge   = extras.parcel_charge;
   if (extras.delivery_charge !== undefined) payload.delivery_charge = extras.delivery_charge;

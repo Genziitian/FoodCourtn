@@ -365,6 +365,7 @@ export default function MenuItems() {
     base_price: 0,
     parcel_charge: 0,
     delivery_charge: 0,
+    is_combo: false,
     food_type: 'veg',
     rating: 0,
     rating_count: 0,
@@ -828,6 +829,7 @@ function ItemEditorInner({
           food_type: draft.food_type,
           is_bestseller: draft.is_bestseller,
           is_recommended: draft.is_recommended,
+          is_combo: draft.is_combo === true,
           in_stock: draft.in_stock,
           sort_order: draft.sort_order,
         }, {
@@ -846,6 +848,7 @@ function ItemEditorInner({
           food_type: draft.food_type,
           is_bestseller: draft.is_bestseller,
           is_recommended: draft.is_recommended,
+          is_combo: draft.is_combo === true,
           in_stock: draft.in_stock,
           sort_order: draft.sort_order,
         });
@@ -990,6 +993,12 @@ function ItemEditorInner({
           <Toggle checked={draft.in_stock} onChange={v => set('in_stock', v)} label="In stock" description="Customers can order this item" />
           <Toggle checked={draft.is_bestseller} onChange={v => set('is_bestseller', v)} label="Bestseller" description="Show Bestseller badge on customer menu" />
           <Toggle checked={draft.is_recommended} onChange={v => set('is_recommended', v)} label="Recommended" description="Appears in the Recommended row" />
+          <Toggle
+            checked={draft.is_combo === true}
+            onChange={v => set('is_combo', v)}
+            label="Combo deal"
+            description="Lists this item under the dedicated Combos tab and lets the cart smart-suggest it when the customer's subtotal is within ₹60."
+          />
         </section>
       </div>
     </Drawer>

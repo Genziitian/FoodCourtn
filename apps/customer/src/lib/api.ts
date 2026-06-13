@@ -101,6 +101,7 @@ export async function getMenu(restaurantId: string): Promise<{ categories: Categ
     mrp: i.mrp ?? null,
     parcel_charge:   i.parcel_charge   != null ? Number(i.parcel_charge)   : 0,
     delivery_charge: i.delivery_charge != null ? Number(i.delivery_charge) : 0,
+    is_combo:        !!i.is_combo,
     prep_time_min: i.prep_time_min ?? 15,
     is_chef_special: i.is_chef_special ?? false,
     spice_levels: i.spice_levels ?? [],

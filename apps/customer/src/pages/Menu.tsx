@@ -57,12 +57,19 @@ export default function Menu() {
     };
   }, [openItem]);
 
+  // Combos are surfaced as a pseudo-category alongside the real ones.
+  // The chip is only shown when the menu actually has combo items.
+  const combos = useMemo(() => items.filter(i => i.is_combo === true), [items]);
+  const hasCombos = combos.length > 0;
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return items.filter(i => {
       if (filter === 'veg'     && i.food_type !== 'veg')     return false;
       if (filter === 'non_veg' && i.food_type !== 'non_veg') return false;
-      if (activeCat !== 'all' && i.category_id !== activeCat) return false;
+      if (activeCat === 'combos') {
+        if (i.is_combo !== true) return false;
+      } else if (activeCat !== 'all' && i.category_id !== activeCat) return false;
       if (q) {
         const cat = categories.find(c => c.id === i.category_id)?.name.toLowerCase() ?? '';
         if (!i.name.toLowerCase().includes(q) && !cat.includes(q)) return false;
@@ -207,6 +214,11 @@ export default function Menu() {
 
           <div className="no-scrollbar overflow-x-auto px-container-margin gap-3 py-3 flex">
             <CatPill active={activeCat === 'all'} onClick={() => setActiveCat('all')}>All</CatPill>
+            {hasCombos && (
+              <CatPill active={activeCat === 'combos'} onClick={() => setActiveCat('combos')}>
+                🎁 Combos
+              </CatPill>
+            )}
             {categories.map(c => (
               <CatPill key={c.id} active={activeCat === c.id} onClick={() => setActiveCat(c.id)}>
                 {c.name}
