@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  BarChart3, Building2, ChevronDown, ChevronRight, ExternalLink, MapPin, MoreHorizontal,
-  Phone, Plus, Search, ShoppingBag, TrendingUp, Users as UsersIcon, Wallet,
+  BarChart3, Building2, ChevronDown, ExternalLink, MapPin, MoreHorizontal,
+  Phone, Plus, Search, ShoppingBag, Trash2, TrendingUp, Users as UsersIcon, Wallet,
 } from 'lucide-react';
 import { cls, inr } from '@foodcourt/shared';
 import { PageHeader } from '../../components/PageHeader';
@@ -10,6 +10,7 @@ import {
   listOrganizations, listBranches, createBranch, getRevenueByOrg,
   seedNewBranch, createOrgWithOwner, addOrgAdminToExisting,
   listOrgAdmins, removeOrgAdmin, isValidEmail, getOrgInsights,
+  deleteBranch, deleteOrganization,
   type OrgRow, type BranchRow, type OrgAdminRow, type OrgInsights,
 } from '../../lib/api';
 
@@ -156,13 +157,43 @@ export default function SuperRestaurants() {
                     onViewInsights={() => setViewingInsightsFor(o)}
                     onManageAdmins={() => setManagingAdminsFor(o)}
                     onAddBranch={() => setCreatingBranchFor(o.id)}
+                    onDelete={async () => {
+                      const branchCount = orgBranches.length;
+                      const blast = branchCount > 0
+                        ? `This will permanently delete "${o.name}" AND its ${branchCount} branch${branchCount === 1 ? '' : 'es'}, along with every menu item, order, payment, and KOT under them. This cannot be undone.`
+                        : `This will permanently delete "${o.name}". This cannot be undone.`;
+                      if (!confirm(blast)) return;
+                      const second = prompt(`Type the organization name "${o.name}" to confirm deletion:`);
+                      if (second !== o.name) {
+                        if (second !== null) alert('Name did not match — deletion cancelled.');
+                        return;
+                      }
+                      try {
+                        await deleteOrganization(o.id);
+                        await refresh();
+                      } catch (e: any) {
+                        alert('Could not delete organization: ' + (e?.message ?? e));
+                      }
+                    }}
                   />
                 </div>
 
                 {isExpanded && orgBranches.length > 0 && (
                   <ul className="bg-slate-50/50 border-t border-slate-100">
                     {orgBranches.map(b => (
-                      <BranchRowView key={b.id} branch={b} />
+                      <BranchRowView
+                        key={b.id}
+                        branch={b}
+                        onDelete={async () => {
+                          if (!confirm(`Permanently delete branch "${b.name}"? This wipes its menu, orders, payments, and KOTs. Cannot be undone.`)) return;
+                          try {
+                            await deleteBranch(b.id);
+                            await refresh();
+                          } catch (e: any) {
+                            alert('Could not delete branch: ' + (e?.message ?? e));
+                          }
+                        }}
+                      />
                     ))}
                   </ul>
                 )}
@@ -204,11 +235,12 @@ export default function SuperRestaurants() {
 // Three-dots dropdown menu for an org row
 // ────────────────────────────────────────────────────────────
 function OrgActionsMenu({
-  onViewInsights, onManageAdmins, onAddBranch,
+  onViewInsights, onManageAdmins, onAddBranch, onDelete,
 }: {
   onViewInsights: () => void;
   onManageAdmins: () => void;
   onAddBranch: () => void;
+  onDelete: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement | null>(null);
@@ -272,6 +304,13 @@ function OrgActionsMenu({
           >
             <Plus className="size-4 text-slate-500" />
             Add branch
+          </button>
+          <button
+            onClick={pick(onDelete)}
+            className="w-full text-left px-3 py-2.5 flex items-center gap-2.5 hover:bg-rose-50 text-rose-700 border-t border-slate-100 font-semibold"
+          >
+            <Trash2 className="size-4" />
+            Delete organization
           </button>
         </div>
       )}
@@ -589,7 +628,7 @@ function ManageAdminsModal({ org, onClose }: { org: OrgRow | null; onClose: () =
   );
 }
 
-function BranchRowView({ branch }: { branch: BranchRow }) {
+function BranchRowView({ branch, onDelete }: { branch: BranchRow; onDelete: () => void }) {
   const customerBase = (import.meta.env.VITE_CUSTOMER_URL as string | undefined)?.replace(/\/$/, '') || 'http://localhost:8081';
   const customerHref = `${customerBase}/${branch.slug}`;
   return (
@@ -625,8 +664,13 @@ function BranchRowView({ branch }: { branch: BranchRow }) {
       >
         <ExternalLink className="size-4" />
       </a>
-      <button className="size-8 grid place-items-center rounded-full hover:bg-slate-100 text-slate-500" title="More">
-        <ChevronRight className="size-4" />
+      <button
+        onClick={onDelete}
+        className="size-8 grid place-items-center rounded-full hover:bg-rose-50 text-slate-400 hover:text-rose-600 transition"
+        title="Delete this branch"
+        aria-label={`Delete branch ${branch.name}`}
+      >
+        <Trash2 className="size-4" />
       </button>
     </li>
   );

@@ -36,13 +36,11 @@ export default function Login() {
 
   const continueAsGuest = async () => {
     setError(null);
-    if (!name.trim()) {
-      setError('Enter your name to continue as guest.');
-      return;
-    }
     setGuestSubmitting(true);
     try {
-      await signInAsGuest(name.trim());
+      // Name is optional for guests — pass whatever they typed (could be
+      // empty), the auth layer falls back to "Guest" if it's blank.
+      await signInAsGuest(name);
       navigate(redirectTo, { replace: true });
     } catch (e: any) {
       setError(e?.message ?? 'Could not continue as guest. Try again.');

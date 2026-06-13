@@ -143,6 +143,31 @@ export async function updateBranch(id: string, patch: Partial<BranchRow & { sett
   if (error) throw error;
 }
 
+/**
+ * Hard-delete a branch (restaurant row). Cascades — the DB drops dependent
+ * rows (menu items, orders, kot tickets, payments) via the FK on delete
+ * cascade clauses set up in 0001_initial_schema.sql.
+ *
+ * ⚠️  Destructive. The caller MUST confirm with the user first; this is
+ * what the super-admin "Delete branch" button calls under the hood.
+ */
+export async function deleteBranch(id: string): Promise<void> {
+  const { error } = await client().from('restaurants').delete().eq('id', id);
+  if (error) throw error;
+}
+
+/**
+ * Hard-delete an organization. Cascades through every branch in the org,
+ * which then cascades through orders / menu items / etc.
+ *
+ * ⚠️  Extremely destructive — wipes the entire tenant. Always confirm
+ * before calling.
+ */
+export async function deleteOrganization(id: string): Promise<void> {
+  const { error } = await client().from('organizations').delete().eq('id', id);
+  if (error) throw error;
+}
+
 export async function getBranchSettings(id: string): Promise<{ settings: any; restaurant: any } | null> {
   const { data, error } = await client()
     .from('restaurants')

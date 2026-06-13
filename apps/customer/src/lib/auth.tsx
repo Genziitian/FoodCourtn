@@ -274,8 +274,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     },
 
     signInAsGuest: async (rawName: string) => {
-      const display = rawName.trim();
-      if (!display) throw new Error('Please enter your name to continue as guest.');
+      // Name is optional for guests. If they didn't type one, just call
+      // them "Guest" — the order can still be tracked by browser UUID and
+      // the kitchen sees "Guest" on the KOT.
+      const display = rawName.trim() || 'Guest';
 
       // Best-effort customer row so reorders / tracking can join back to
       // the same customerId. We don't fail the guest sign-in if Supabase
