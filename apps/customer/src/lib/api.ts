@@ -54,6 +54,21 @@ export async function getTableByToken(restaurantId: string, qrToken: string) {
   return data;
 }
 
+/**
+ * For single-QR mode: list active tables so the customer can pick one from a
+ * dropdown after scanning the branch QR.
+ */
+export async function listActiveTables(restaurantId: string) {
+  const { data, error } = await client()
+    .from('dining_tables')
+    .select('id, label, qr_token, is_active')
+    .eq('restaurant_id', restaurantId)
+    .eq('is_active', true)
+    .order('label');
+  if (error) throw error;
+  return (data ?? []) as Array<{ id: string; label: string; qr_token: string; is_active: boolean }>;
+}
+
 // ────────────────────────────────────────────────────────────
 // Menu
 // ────────────────────────────────────────────────────────────

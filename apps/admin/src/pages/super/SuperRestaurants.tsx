@@ -789,6 +789,7 @@ function CreateBranchModal({
   const [branchCode, setBranchCode] = useState('');
   const [tableCount, setTableCount] = useState(8);
   const [autoSeed, setAutoSeed] = useState(true);
+  const [qrMode, setQrMode] = useState<'per_table' | 'single'>('per_table');
   // Up to 5 hero-image URLs for the customer Landing carousel. Empty rows
   // are filtered out at submit, so the owner can leave any of them blank.
   const [heroImages, setHeroImages] = useState<string[]>(['', '', '']);
@@ -818,6 +819,7 @@ function CreateBranchModal({
         city,
         phone,
         hero_images: heroImages,
+        qr_mode: qrMode,
       });
       if (autoSeed) {
         try {
@@ -930,6 +932,27 @@ function CreateBranchModal({
                 )}
               </div>
             ))}
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-slate-200 bg-white p-3 space-y-2">
+          <div>
+            <p className="text-sm font-semibold text-slate-800">QR strategy</p>
+            <p className="text-xs text-slate-600">
+              Pick how customers find a table when they walk in. You can change this later from Tables → settings.
+            </p>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <label className={`cursor-pointer rounded-lg border-2 p-3 text-left ${qrMode === 'per_table' ? 'border-brand-500 bg-brand-50' : 'border-slate-200 hover:border-slate-300'}`}>
+              <input type="radio" className="sr-only" checked={qrMode === 'per_table'} onChange={() => setQrMode('per_table')} />
+              <p className="text-sm font-bold text-slate-800">One QR per table</p>
+              <p className="text-xs text-slate-600 mt-0.5">Sticker each table with its own QR. Scan jumps straight to the menu.</p>
+            </label>
+            <label className={`cursor-pointer rounded-lg border-2 p-3 text-left ${qrMode === 'single' ? 'border-brand-500 bg-brand-50' : 'border-slate-200 hover:border-slate-300'}`}>
+              <input type="radio" className="sr-only" checked={qrMode === 'single'} onChange={() => setQrMode('single')} />
+              <p className="text-sm font-bold text-slate-800">Single QR for branch</p>
+              <p className="text-xs text-slate-600 mt-0.5">One QR at the entrance. Customer picks their table from a dropdown.</p>
+            </label>
           </div>
         </div>
 

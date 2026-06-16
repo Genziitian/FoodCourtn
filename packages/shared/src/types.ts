@@ -54,6 +54,7 @@ export interface Restaurant {
   menu_hero_images?: string[] | null;   // up to 5 carousel images on the Menu page header; falls back to hero_images
   welcome_text: string;
   is_open: boolean;
+  qr_mode?: 'per_table' | 'single';     // 'single' = one QR for whole branch + table chooser; default per_table
   settings: RestaurantSettings;
   // branch fields (added in migration 0004)
   organization_id?: string;

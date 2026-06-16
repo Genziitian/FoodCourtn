@@ -53,6 +53,7 @@ export interface BranchRow {
   phone: string | null;
   is_open: boolean;
   address?: string | null;
+  qr_mode?: 'per_table' | 'single';
 }
 
 export async function listOrganizations(): Promise<OrgRow[]> {
@@ -91,12 +92,19 @@ export async function updateOrganization(id: string, patch: Partial<OrgRow>) {
 }
 
 export async function listBranches(orgId?: string): Promise<BranchRow[]> {
-  let q = client()
-    .from('restaurants')
-    .select('id, organization_id, slug, name, branch_code, area_name, city, phone, is_open, address')
-    .order('name');
-  if (orgId) q = q.eq('organization_id', orgId);
-  const { data, error } = await q;
+  const fullSelect = 'id, organization_id, slug, name, branch_code, area_name, city, phone, is_open, address, qr_mode';
+  const legacySelect = 'id, organization_id, slug, name, branch_code, area_name, city, phone, is_open, address';
+
+  const run = async (sel: string) => {
+    let q = client().from('restaurants').select(sel).order('name');
+    if (orgId) q = q.eq('organization_id', orgId);
+    return q;
+  };
+
+  let { data, error } = await run(fullSelect) as any;
+  if (error && /column .*qr_mode/i.test(error.message ?? '')) {
+    ({ data, error } = await run(legacySelect) as any);
+  }
   if (error) throw error;
   return (data ?? []) as BranchRow[];
 }
@@ -111,31 +119,51 @@ export async function createBranch(input: {
   phone?: string;
   address?: string;
   hero_images?: string[];     // 0–5 image URLs for the customer hero carousel
+  qr_mode?: 'per_table' | 'single';   // QR strategy — see add_restaurant_qr_mode.sql
 }): Promise<BranchRow> {
   // Take the first non-empty image as the legacy `hero_image` so older
   // single-image code paths keep working. Cap the array at 5.
   const cleanImages = (input.hero_images ?? []).map(s => s.trim()).filter(Boolean).slice(0, 5);
   const heroImage = cleanImages[0] ?? null;
 
-  const { data, error } = await client()
+  const payload: any = {
+    organization_id: input.organization_id,
+    slug: input.slug,
+    name: input.name,
+    branch_code: input.branch_code ?? null,
+    area_name: input.area_name ?? null,
+    city: input.city ?? 'Bengaluru',
+    phone: input.phone ?? null,
+    address: input.address ?? null,
+    hero_image: heroImage,
+    hero_images: cleanImages,
+    is_open: true,
+  };
+  if (input.qr_mode) payload.qr_mode = input.qr_mode;
+
+  // Try insert with qr_mode; if the column isn't migrated yet, retry without.
+  let { data, error } = await client()
     .from('restaurants')
-    .insert({
-      organization_id: input.organization_id,
-      slug: input.slug,
-      name: input.name,
-      branch_code: input.branch_code ?? null,
-      area_name: input.area_name ?? null,
-      city: input.city ?? 'Bengaluru',
-      phone: input.phone ?? null,
-      address: input.address ?? null,
-      hero_image: heroImage,
-      hero_images: cleanImages,
-      is_open: true,
-    })
-    .select('id, organization_id, slug, name, branch_code, area_name, city, phone, is_open, address')
-    .single();
+    .insert(payload)
+    .select('id, organization_id, slug, name, branch_code, area_name, city, phone, is_open, address, qr_mode')
+    .single() as any;
+
+  if (error && /column .*qr_mode/i.test(error.message ?? '')) {
+    delete payload.qr_mode;
+    ({ data, error } = await client()
+      .from('restaurants')
+      .insert(payload)
+      .select('id, organization_id, slug, name, branch_code, area_name, city, phone, is_open, address')
+      .single() as any);
+  }
   if (error) throw error;
   return data as BranchRow;
+}
+
+/** Switch a branch's QR mode after creation. */
+export async function setBranchQrMode(branchId: string, mode: 'per_table' | 'single') {
+  const { error } = await client().from('restaurants').update({ qr_mode: mode }).eq('id', branchId);
+  if (error) throw error;
 }
 
 export async function updateBranch(id: string, patch: Partial<BranchRow & { settings: any }>) {

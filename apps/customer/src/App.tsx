@@ -8,6 +8,7 @@ import Profile from './pages/Profile';
 import OrderHistory from './pages/OrderHistory';
 import Addresses from './pages/Addresses';
 import FoodCoins from './pages/FoodCoins';
+import TableChooser from './pages/TableChooser';
 import { RequireCustomer } from './components/RequireCustomer';
 
 export default function App() {
@@ -15,6 +16,9 @@ export default function App() {
     <Routes>
       {/* Public — login only */}
       <Route path="/login" element={<Login />} />
+      {/* Public — single-QR table chooser. Branch shows ONE QR; customer
+          picks their table here and we forward into the gated dine-in flow. */}
+      <Route path="/:slug/scan" element={<TableChooser />} />
       {/* Root redirect (lands at a demo table; gate kicks in if not signed in) */}
       <Route path="/" element={<Navigate to="/the-spice-route/t/sr-t12" replace />} />
 

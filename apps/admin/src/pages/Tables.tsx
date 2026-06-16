@@ -6,10 +6,11 @@ import { cls, inr } from '@foodcourt/shared';
 import { PageHeader } from '../components/PageHeader';
 import { Modal } from '../components/Drawer';
 import { useTenant } from '../lib/tenant';
-import { listTables, createTable, deleteTable, seedDefaultTables, type AdminTableRow } from '../lib/api';
+import { listTables, createTable, deleteTable, seedDefaultTables, setBranchQrMode, type AdminTableRow } from '../lib/api';
 import { CUSTOMER_URL } from '../lib/urls';
 
 const CUSTOMER_BASE = (slug: string) => `${CUSTOMER_URL}/${slug}/t/`;
+const SINGLE_QR_URL = (slug: string) => `${CUSTOMER_URL}/${slug}/scan`;
 
 export default function Tables() {
   const { branch } = useTenant();
@@ -19,6 +20,20 @@ export default function Tables() {
   const [openQr, setOpenQr] = useState<AdminTableRow | null>(null);
   const [adding, setAdding] = useState(false);
   const [seeding, setSeeding] = useState(false);
+  // Local mirror — Tenant doesn't refetch the row when we flip the mode, so
+  // we keep an optimistic copy here and use it for rendering.
+  const [qrMode, setQrModeLocal] = useState<'per_table' | 'single'>(
+    branch?.qr_mode ?? 'per_table',
+  );
+  useEffect(() => { setQrModeLocal(branch?.qr_mode ?? 'per_table'); }, [branch]);
+
+  const flipQrMode = async (next: 'per_table' | 'single') => {
+    if (!branch) return;
+    const prev = qrMode;
+    setQrModeLocal(next);
+    try { await setBranchQrMode(branch.id, next); }
+    catch (e: any) { alert(e.message ?? 'Could not update'); setQrModeLocal(prev); }
+  };
 
   const seedDefaults = async () => {
     if (!branch) return;
@@ -76,8 +91,46 @@ export default function Tables() {
       )}
 
       {branch && (
+        <section className="bg-white rounded-2xl shadow-card p-4">
+          <div className="flex items-start justify-between gap-3 mb-3">
+            <div>
+              <h2 className="text-base font-bold">QR strategy</h2>
+              <p className="text-sm text-slate-500">
+                {qrMode === 'single'
+                  ? 'One QR for the whole branch. Customers pick a table after scanning.'
+                  : 'Each table gets its own QR. Scanning jumps straight to the menu.'}
+              </p>
+            </div>
+            <div className="inline-flex rounded-full bg-slate-100 p-1 text-xs font-semibold">
+              <button
+                onClick={() => flipQrMode('per_table')}
+                className={cls('px-3 py-1.5 rounded-full transition', qrMode === 'per_table' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-600')}
+              >
+                Per table
+              </button>
+              <button
+                onClick={() => flipQrMode('single')}
+                className={cls('px-3 py-1.5 rounded-full transition', qrMode === 'single' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-600')}
+              >
+                Single QR
+              </button>
+            </div>
+          </div>
+
+          {qrMode === 'single' && (
+            <SingleQrCard slug={branch.slug} tableCount={tables.length} />
+          )}
+        </section>
+      )}
+
+      {branch && (
         <section>
-          <h2 className="text-base font-bold mb-3">Floor plan</h2>
+          <h2 className="text-base font-bold mb-3">{qrMode === 'single' ? 'Registered tables' : 'Floor plan'}</h2>
+          {qrMode === 'single' && (
+            <p className="text-sm text-slate-500 mb-3">
+              These are the tables customers will see in the dropdown after scanning your single QR. Keep them up to date as you add or retire seating.
+            </p>
+          )}
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
             {tables.map(t => {
               const isOccupied = !!t.active_order_id;
@@ -293,5 +346,55 @@ function QrModal({ slug, table, onClose }: { slug: string; table: AdminTableRow 
         </p>
       </div>
     </Modal>
+  );
+}
+
+/**
+ * Big poster-style QR for the single-QR mode. One scan lands the customer on
+ * the table chooser at `/{slug}/scan`, where they pick from the dropdown of
+ * registered tables.
+ */
+function SingleQrCard({ slug, tableCount }: { slug: string; tableCount: number }) {
+  const url = SINGLE_QR_URL(slug);
+  return (
+    <div className="rounded-xl border border-slate-200 bg-gradient-to-br from-brand-50 to-amber-50 p-4 flex flex-col sm:flex-row items-center gap-5">
+      <div className="size-44 rounded-2xl bg-white border border-slate-200 grid place-items-center overflow-hidden shrink-0">
+        <img
+          src={`https://api.qrserver.com/v1/create-qr-code/?size=240x240&margin=8&data=${encodeURIComponent(url)}`}
+          alt="Branch single QR"
+          className="size-full p-3"
+        />
+      </div>
+      <div className="flex-1 min-w-0 text-center sm:text-left">
+        <p className="text-xs font-bold uppercase tracking-wider text-brand-700">Branch QR</p>
+        <h3 className="text-lg font-bold mt-1">Scan-once, pick-a-table</h3>
+        <p className="text-sm text-slate-600 mt-1">
+          Print this once and stick it at the entrance or counter. Customers scan, choose their table from {tableCount} registered options, then continue to the menu.
+        </p>
+        <p className="mt-2 font-mono text-xs text-slate-700 bg-white/70 rounded px-2 py-1 break-all">{url}</p>
+        <div className="mt-3 flex flex-wrap items-center gap-2 justify-center sm:justify-start">
+          <button
+            onClick={() => navigator.clipboard?.writeText(url)}
+            className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+          >
+            <Copy className="size-3.5" /> Copy link
+          </button>
+          <a
+            href={`https://api.qrserver.com/v1/create-qr-code/?size=640x640&margin=8&data=${encodeURIComponent(url)}`}
+            target="_blank" rel="noreferrer"
+            className="inline-flex items-center gap-1.5 rounded-full bg-brand-600 text-white px-4 py-1.5 text-xs font-semibold hover:bg-brand-700"
+          >
+            <Download className="size-3.5" /> Print-size QR
+          </a>
+          <a
+            href={url}
+            target="_blank" rel="noreferrer"
+            className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+          >
+            <ExternalLink className="size-3.5" /> Preview chooser
+          </a>
+        </div>
+      </div>
+    </div>
   );
 }
