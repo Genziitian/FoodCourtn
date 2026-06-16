@@ -11,12 +11,14 @@ import '../features/cart/cart_screen.dart';
 import '../features/menu/menu_screen.dart';
 import '../features/orders/order_placed_screen.dart';
 import '../features/profile/profile_screen.dart';
-import '../features/restaurant/restaurant_providers.dart';
 import '../features/restaurant/table_chooser_screen.dart';
 
 GoRouter buildRouter(Ref ref) {
   return GoRouter(
-    initialLocation: '/scan',
+    // Default entry is the menu. /scan is only hit when a customer arrives via
+    // a single-QR poster deep-link or types it explicitly — it's not where
+    // every app launch should land.
+    initialLocation: '/menu',
     refreshListenable: _AuthListenable(ref),
     redirect: (context, state) {
       final auth = ref.read(authProvider);

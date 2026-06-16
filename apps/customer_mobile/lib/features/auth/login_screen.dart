@@ -80,7 +80,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: SafeArea(
-        child: Padding(
+        child: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -175,15 +175,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 onPressed: _busy ? null : _guest,
                 child: const Text('Continue as guest'),
               ),
-              const Spacer(),
-              const Padding(
-                padding: EdgeInsets.only(bottom: 8),
-                child: Text(
-                  'Guests can order but can\'t earn FoodCoins or use coupons.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: BrandColors.slate400, fontSize: 12),
-                ),
+              const SizedBox(height: 40),
+              const Text(
+                'Guests can order but can\'t earn FoodCoins or use coupons.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: BrandColors.slate400, fontSize: 12),
               ),
+              const SizedBox(height: 8),
             ],
           ),
         ),
