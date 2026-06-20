@@ -502,6 +502,8 @@ export interface MenuItemRow {
   is_combo?: boolean;           // marks this row as a combo / value deal
   combo_items?: Array<{ menu_item_id: string; quantity: number }>;
   in_stock: boolean;
+  stock_qty?: number | null;            // null = untracked
+  low_stock_threshold?: number | null;
   sort_order: number;
   category_name?: string;
 }
@@ -511,7 +513,8 @@ export async function listMenuItems(restaurantId: string): Promise<MenuItemRow[]
   // optional charge columns hasn't been migrated yet.
   // is_combo is appended to each select string. If the column is missing
   // the fallback below catches it via the same column-error sniffer.
-  const fullSelect = 'id, restaurant_id, category_id, name, description, image_url, base_price, parcel_charge, delivery_charge, food_type, rating, rating_count, is_bestseller, is_recommended, is_combo, combo_items, in_stock, sort_order, categories(name)';
+  const fullSelect = 'id, restaurant_id, category_id, name, description, image_url, base_price, parcel_charge, delivery_charge, food_type, rating, rating_count, is_bestseller, is_recommended, is_combo, combo_items, in_stock, stock_qty, low_stock_threshold, sort_order, categories(name)';
+  const noStockSelect = 'id, restaurant_id, category_id, name, description, image_url, base_price, parcel_charge, delivery_charge, food_type, rating, rating_count, is_bestseller, is_recommended, is_combo, combo_items, in_stock, sort_order, categories(name)';
   const noComboItemsSelect = 'id, restaurant_id, category_id, name, description, image_url, base_price, parcel_charge, delivery_charge, food_type, rating, rating_count, is_bestseller, is_recommended, is_combo, in_stock, sort_order, categories(name)';
   const parcelOnlySelect = 'id, restaurant_id, category_id, name, description, image_url, base_price, parcel_charge, food_type, rating, rating_count, is_bestseller, is_recommended, is_combo, in_stock, sort_order, categories(name)';
   const minimalSelect = 'id, restaurant_id, category_id, name, description, image_url, base_price, food_type, rating, rating_count, is_bestseller, is_recommended, in_stock, sort_order, categories(name)';
@@ -526,6 +529,13 @@ export async function listMenuItems(restaurantId: string): Promise<MenuItemRow[]
     .eq('restaurant_id', restaurantId)
     .order('sort_order'));
 
+  if (error && /column .*(stock_qty|low_stock_threshold)/i.test(error.message ?? '')) {
+    ({ data, error } = await client()
+      .from('menu_items')
+      .select(noStockSelect)
+      .eq('restaurant_id', restaurantId)
+      .order('sort_order'));
+  }
   if (error && /column .*combo_items/i.test(error.message ?? '')) {
     ({ data, error } = await client()
       .from('menu_items')
@@ -570,6 +580,8 @@ function mapRow(r: any): MenuItemRow {
     is_combo: !!r.is_combo,
     combo_items: Array.isArray(r.combo_items) ? r.combo_items : [],
     in_stock: r.in_stock !== false,
+    stock_qty:           r.stock_qty           != null ? Number(r.stock_qty)           : null,
+    low_stock_threshold: r.low_stock_threshold != null ? Number(r.low_stock_threshold) : null,
     sort_order: r.sort_order ?? 0,
     category_name: r.categories?.name ?? undefined,
   };
@@ -676,6 +688,20 @@ export async function deleteMenuItem(id: string) {
 
 export async function setMenuItemInStock(id: string, in_stock: boolean) {
   const { error } = await client().from('menu_items').update({ in_stock }).eq('id', id);
+  if (error) throw error;
+}
+
+/** Set stock_qty (and flip in_stock back on if restocking past 0). */
+export async function setMenuItemStockQty(id: string, qty: number | null) {
+  const patch: any = { stock_qty: qty };
+  if (typeof qty === 'number' && qty > 0) patch.in_stock = true;
+  if (typeof qty === 'number' && qty <= 0) patch.in_stock = false;
+  const { error } = await client().from('menu_items').update(patch).eq('id', id);
+  if (error) throw error;
+}
+
+export async function setMenuItemLowStockThreshold(id: string, n: number) {
+  const { error } = await client().from('menu_items').update({ low_stock_threshold: n }).eq('id', id);
   if (error) throw error;
 }
 

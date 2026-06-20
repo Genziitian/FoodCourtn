@@ -554,6 +554,19 @@ export default function MenuItems() {
                       {it.is_recommended && (
                         <span className="text-[10px] font-bold uppercase tracking-wider text-brand-700 bg-brand-100 px-1.5 py-0.5 rounded">Rec.</span>
                       )}
+                      {it.stock_qty != null && it.stock_qty === 0 && (
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-rose-700 bg-rose-100 px-1.5 py-0.5 rounded">Out</span>
+                      )}
+                      {it.stock_qty != null && it.stock_qty > 0 && it.low_stock_threshold != null && it.stock_qty <= it.low_stock_threshold && (
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded" title="Stock low">
+                          Low · {it.stock_qty}
+                        </span>
+                      )}
+                      {it.stock_qty != null && (it.low_stock_threshold == null || it.stock_qty > it.low_stock_threshold) && (
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded">
+                          {it.stock_qty} left
+                        </span>
+                      )}
                     </div>
                   </td>
                   <td className="px-4 py-3 text-center">
@@ -852,6 +865,8 @@ function ItemEditorInner({
           is_recommended: draft.is_recommended,
           is_combo: draft.is_combo === true,
           in_stock: draft.in_stock,
+          stock_qty: draft.stock_qty ?? null,
+          low_stock_threshold: draft.low_stock_threshold ?? null,
           sort_order: draft.sort_order,
         });
       }
@@ -977,6 +992,34 @@ function ItemEditorInner({
           restaurantId={draft.restaurant_id || ''}
           placeholder="https://… or upload from device"
         />
+
+        <section className="bg-slate-50 rounded-xl p-4 space-y-3">
+          <h3 className="text-sm font-bold">Stock</h3>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Quantity available">
+              <input
+                type="number"
+                min={0}
+                value={draft.stock_qty ?? ''}
+                placeholder="Untracked"
+                onChange={e => set('stock_qty', e.target.value === '' ? null : Math.max(0, Number(e.target.value)))}
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 outline-none focus:border-brand-500"
+              />
+            </Field>
+            <Field label="Low-stock alert below">
+              <input
+                type="number"
+                min={0}
+                value={draft.low_stock_threshold ?? ''}
+                onChange={e => set('low_stock_threshold', e.target.value === '' ? null : Math.max(0, Number(e.target.value)))}
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 outline-none focus:border-brand-500"
+              />
+            </Field>
+          </div>
+          <p className="text-xs text-slate-500">
+            Blank quantity = untracked (the In-stock toggle below controls visibility). Setting a number auto-decrements on every order and hides the item on the customer menu when it hits 0.
+          </p>
+        </section>
 
         <section className="bg-slate-50 rounded-xl p-4 space-y-3">
           <h3 className="text-sm font-bold">Flags</h3>

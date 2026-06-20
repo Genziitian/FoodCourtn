@@ -65,6 +65,9 @@ export default function Menu() {
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return items.filter(i => {
+      // Stock-level inventory: when the trigger flips in_stock to false, hide
+      // the item entirely. Admin can also force-hide via the toggle.
+      if (i.in_stock === false) return false;
       if (filter === 'veg'     && i.food_type !== 'veg')     return false;
       if (filter === 'non_veg' && i.food_type !== 'non_veg') return false;
       if (activeCat === 'combos') {
