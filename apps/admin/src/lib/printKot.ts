@@ -1,18 +1,28 @@
 // ════════════════════════════════════════════════════════════════════
-// Thermal-receipt KOT printer.
+// Thermal-receipt KOT printer (80mm).
+//
+// Two distinct prints:
+//   • CHEF KOT      — kitchen ticket. Big bold items + qty, no prices,
+//                      no branding. The cook reads it across a steamy
+//                      kitchen so legibility wins over polish.
+//   • CUSTOMER BILL — branded receipt with prices, taxes, total, GSTIN.
+//
+// `printKot(input, 'chef'    )` → chef ticket only
+// `printKot(input, 'customer')` → customer bill only
+// `printKot(input, 'both'    )` → both, chef first then customer
+//                                  (~600ms gap so the dialog isn't
+//                                   double-fired in browsers that batch).
 //
 // Used from:
 //   • KDS (Kitchen Display) — reprint a specific KOT ticket
 //   • Orders page          — reprint the KOT for any order in the list
+//   • realtime auto-print  — see useAutoPrintNewOrders.ts
 //
-// Both pages have slightly different in-memory shapes for the same data
-// (KotTicketWithOrder vs AdminOrder), so this helper takes a normalised
-// input and renders an 80mm thermal receipt with the browser's print API.
-//
-// Print strategy: try a popup first, fall back to a hidden iframe in the
-// current window. The iframe path works even when popups are blocked
-// (which they often are when print is triggered from a list-row click).
+// Print strategy: hidden iframe in the current document. See trailing
+// comment in `runPrint()` for why iframe beats window.open.
 // ════════════════════════════════════════════════════════════════════
+
+export type KotPrintKind = 'chef' | 'customer' | 'both';
 
 export interface KotPrintInput {
   ticket_no: string;
@@ -40,7 +50,7 @@ export interface KotPrintInput {
     logo_url?: string | null;
     gstin?: string | null;
   };
-  /** Optional totals — when present, the receipt shows a price column + bill summary. */
+  /** Optional totals — required for the customer bill; ignored on chef KOT. */
   totals?: {
     subtotal?: number | null;
     tax?: number | null;
@@ -68,12 +78,69 @@ function inr(n: number | null | undefined): string {
   return '₹' + Number(n).toFixed(2);
 }
 
-export function printKot(input: KotPrintInput): void {
+// ────────────────────────────────────────────────────────────────────
+// CHEF KOT — 80mm kitchen ticket. Big readable type, no prices.
+// ────────────────────────────────────────────────────────────────────
+
+function buildChefHtml(input: KotPrintInput): string {
+  const rows = input.items.map(it => `
+    <tr class="item">
+      <td class="qty">${it.qty}</td>
+      <td class="name">
+        <strong>${escapeHtml(it.name)}</strong>${it.variant ? '<div class="sub">' + escapeHtml(it.variant) + '</div>' : ''}
+        ${(it.modifiers ?? []).length ? `<div class="sub">+ ${it.modifiers.map(escapeHtml).join(', ')}</div>` : ''}
+        ${it.notes ? `<div class="note">"${escapeHtml(it.notes)}"</div>` : ''}
+      </td>
+    </tr>
+  `).join('');
+
+  return `<!doctype html>
+<html><head>
+<meta charset="utf-8">
+<title>KOT · ${escapeHtml(input.ticket_no)}</title>
+<style>
+  @page { size: 80mm auto; margin: 4mm }
+  * { box-sizing: border-box }
+  body { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 14px; color: #000; margin: 0; padding: 0; }
+  .kind   { text-align: center; font-size: 16px; font-weight: 800; letter-spacing: 4px; margin-bottom: 4px; padding: 4px 0; border: 2px solid #000 }
+  .ticket { text-align: center; font-size: 22px; font-weight: 800; margin: 8px 0 2px; letter-spacing: 2px }
+  .where  { text-align: center; font-size: 18px; font-weight: 800; margin-bottom: 6px; text-transform: uppercase }
+  .meta   { text-align: center; font-size: 11px; margin-bottom: 6px; line-height: 1.4; color: #000 }
+  hr { border: 0; border-top: 1px dashed #000; margin: 6px 0 }
+  table { width: 100%; border-collapse: collapse }
+  tr.item td { vertical-align: top; padding: 6px 0; border-bottom: 1px dotted #999 }
+  td.qty  { width: 36px; font-size: 22px; font-weight: 800; text-align: center; vertical-align: middle }
+  td.name { font-size: 15px; font-weight: 700; line-height: 1.25 }
+  .sub  { font-size: 12px; font-weight: 500; color: #000 }
+  .note { font-size: 12px; font-style: italic; color: #000; margin-top: 2px; background: #eee; padding: 2px 4px; border-radius: 2px }
+  .reprint { color: #000; font-weight: 800; text-transform: uppercase; text-align: center; margin-top: 6px; padding: 2px; border: 2px dashed #000 }
+  .total-line { text-align: center; font-size: 12px; margin-top: 8px; font-weight: 700 }
+</style>
+</head>
+<body>
+  <div class="kind">KITCHEN · KOT</div>
+  <div class="ticket">${escapeHtml(input.ticket_no)}</div>
+  <div class="where">${escapeHtml(typeLabel(input.order_type, input.table_label))}</div>
+  <div class="meta">
+    ${input.order_code ? escapeHtml(input.order_code) : ''}
+    ${input.customer_name ? '<br>' + escapeHtml(input.customer_name) : ''}
+    <br>${new Date(input.created_at).toLocaleString('en-IN')}
+  </div>
+  <hr>
+  <table>${rows}</table>
+  <div class="total-line">${input.items.reduce((s, it) => s + it.qty, 0)} item${input.items.length === 1 ? '' : 's'}</div>
+  ${(input.reprint_count ?? 0) > 0 ? `<div class="reprint">REPRINT #${(input.reprint_count ?? 0) + 1}</div>` : ''}
+</body></html>`;
+}
+
+// ────────────────────────────────────────────────────────────────────
+// CUSTOMER BILL — branded 80mm receipt with prices + tax + totals.
+// ────────────────────────────────────────────────────────────────────
+
+function buildCustomerHtml(input: KotPrintInput): string {
   const r = input.restaurant ?? {};
   const hasPrices = !!input.totals || input.items.some(it => it.unit_price != null);
 
-  // Branded header — restaurant name + phone + address, plus an optional
-  // logo image. Falls back gracefully if no branding info is provided.
   const headerHtml = `
     ${r.logo_url ? `<div class="logo"><img src="${escapeHtml(r.logo_url)}" alt="" onerror="this.style.display='none'"/></div>` : ''}
     ${r.name ? `<h1 class="brand">${escapeHtml(r.name)}</h1>` : ''}
@@ -109,7 +176,7 @@ export function printKot(input: KotPrintInput): void {
     </table>
   ` : '';
 
-  const html = `<!doctype html>
+  return `<!doctype html>
 <html><head>
 <meta charset="utf-8">
 <title>${escapeHtml(r.name ?? 'Receipt')} · ${escapeHtml(input.ticket_no)}</title>
@@ -124,6 +191,7 @@ export function printKot(input: KotPrintInput): void {
   .addr { text-align: center; font-size: 11px; color: #333; line-height: 1.4 }
   .ticket { text-align: center; font-size: 16px; font-weight: 800; margin-top: 8px; letter-spacing: 1px }
   .meta { text-align: center; font-size: 11px; margin-bottom: 6px; line-height: 1.4; color: #333 }
+  .kind { text-align: center; font-size: 11px; letter-spacing: 2px; margin-top: 6px; padding: 2px 0; border-top: 1px solid #000; border-bottom: 1px solid #000; font-weight: 800 }
   hr { border: 0; border-top: 1px dashed #000; margin: 8px 0 }
   table { width: 100%; border-collapse: collapse; }
   table.items { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; }
@@ -141,6 +209,7 @@ export function printKot(input: KotPrintInput): void {
 </head>
 <body>
   ${headerHtml}
+  <div class="kind">CUSTOMER BILL</div>
   <div class="ticket">${escapeHtml(input.ticket_no)}</div>
   <div class="meta">
     ${input.order_code ? escapeHtml(input.order_code) + ' · ' : ''}${escapeHtml(typeLabel(input.order_type, input.table_label))}
@@ -157,66 +226,76 @@ export function printKot(input: KotPrintInput): void {
     <br><br>Thank you${r.name ? ' for visiting ' + escapeHtml(r.name) : ''}.
   </div>
 </body></html>`;
+}
 
-  // Single reliable path: hidden iframe in the current document.
-  //
-  // Why iframe instead of `window.open`:
-  //  • Popup blockers in Chrome/Edge/Safari frequently kill `window.open`
-  //    without warning, especially when the print is triggered from a
-  //    list-row click (the heuristic sees it as a "second" interaction).
-  //  • The previous implementation tried popup first, then iframe — but
-  //    when the popup opened in the background and then a SECOND print
-  //    dialog raced from the inner `<script>onload</script>`, Chrome
-  //    swallowed both. Always-iframe avoids that race.
-  //
-  // The iframe writes the HTML, waits for it to load, then calls
-  // `contentWindow.print()` — one print() call, deterministic timing.
-  const frame = document.createElement('iframe');
-  frame.style.position = 'fixed';
-  frame.style.right = '0';
-  frame.style.bottom = '0';
-  frame.style.width = '0';
-  frame.style.height = '0';
-  frame.style.border = '0';
-  frame.setAttribute('aria-hidden', 'true');
-  document.body.appendChild(frame);
+// ────────────────────────────────────────────────────────────────────
+// Print runner — same iframe trick the previous file used.
+// ────────────────────────────────────────────────────────────────────
 
-  let printed = false;
-  const cleanup = () => {
-    // Keep the frame alive briefly so the print dialog has time to capture
-    // its document; some browsers (Safari especially) abort an in-flight
-    // print if the iframe is removed too early.
-    setTimeout(() => { try { frame.remove(); } catch { /* ignore */ } }, 2000);
-  };
+function runPrint(html: string, opts: { afterMs?: number } = {}): Promise<void> {
+  return new Promise<void>((resolve) => {
+    const frame = document.createElement('iframe');
+    frame.style.position = 'fixed';
+    frame.style.right = '0';
+    frame.style.bottom = '0';
+    frame.style.width = '0';
+    frame.style.height = '0';
+    frame.style.border = '0';
+    frame.setAttribute('aria-hidden', 'true');
+    document.body.appendChild(frame);
 
-  const tryPrint = () => {
-    if (printed) return;
-    printed = true;
-    try {
-      frame.contentWindow?.focus();
-      frame.contentWindow?.print();
-    } catch (e) {
-      console.warn('iframe print failed', e);
-      alert('Could not open the print dialog. Try printing from your browser menu (Ctrl+P / Cmd+P) instead.');
-    } finally {
-      cleanup();
+    let printed = false;
+    const cleanup = () => {
+      // Keep the frame alive briefly so the print dialog has time to capture
+      // its document; some browsers (Safari especially) abort an in-flight
+      // print if the iframe is removed too early.
+      setTimeout(() => { try { frame.remove(); } catch { /* ignore */ } resolve(); }, opts.afterMs ?? 2000);
+    };
+
+    const tryPrint = () => {
+      if (printed) return;
+      printed = true;
+      try {
+        frame.contentWindow?.focus();
+        frame.contentWindow?.print();
+      } catch (e) {
+        console.warn('iframe print failed', e);
+      } finally {
+        cleanup();
+      }
+    };
+
+    frame.onload = tryPrint;
+
+    const doc = frame.contentDocument;
+    if (!doc) {
+      console.warn('iframe contentDocument unavailable');
+      frame.remove();
+      resolve();
+      return;
     }
-  };
+    doc.open();
+    doc.write(html);
+    doc.close();
 
-  frame.onload = tryPrint;
+    // Safety net: some browsers don't fire `onload` for document.write-ed
+    // content. Force after 600ms.
+    setTimeout(tryPrint, 600);
+  });
+}
 
-  const doc = frame.contentDocument;
-  if (!doc) {
-    alert('Printing isn\'t supported in this browser tab. Try opening the admin in Chrome/Edge.');
-    frame.remove();
-    return;
-  }
-  doc.open();
-  doc.write(html);
-  doc.close();
-
-  // Safety net: some browsers don't fire `onload` for `document.write`-ed
-  // content. If we don't get an onload within 600ms, force the print
-  // anyway — the document is already in the iframe.
-  setTimeout(tryPrint, 600);
+/**
+ * Print a KOT. Use `kind='both'` to fire chef then customer back-to-back.
+ *
+ * Why iframe instead of window.open: popup blockers in Chrome/Edge/Safari
+ * frequently kill window.open when triggered from a list-row click, and
+ * the previous popup-first / iframe-fallback path raced when both opened.
+ */
+export async function printKot(input: KotPrintInput, kind: KotPrintKind = 'customer'): Promise<void> {
+  if (kind === 'chef')     return runPrint(buildChefHtml(input));
+  if (kind === 'customer') return runPrint(buildCustomerHtml(input));
+  // 'both' → chef first (most urgent), customer follows. Cleanup of the
+  // chef frame finishes before the customer print dialog opens.
+  await runPrint(buildChefHtml(input), { afterMs: 800 });
+  await runPrint(buildCustomerHtml(input));
 }

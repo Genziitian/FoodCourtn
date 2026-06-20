@@ -9,7 +9,9 @@ import { OrderStatusPill, PaymentStatusPill, TypePill } from '../components/Stat
 import { Drawer } from '../components/Drawer';
 import { PageHeader } from '../components/PageHeader';
 import { FullscreenButton, useFullscreen } from '../components/FullscreenToggle';
+import { AutoPrintToggle } from '../components/AutoPrintToggle';
 import { useTenant } from '../lib/tenant';
+import { useAutoPrintNewOrders } from '../lib/useAutoPrintNewOrders';
 import {
   type AdminOrder, listOrders, subscribeToOrders, updateOrderStatus, cancelOrder,
 } from '../lib/api';
@@ -77,6 +79,11 @@ export default function Orders() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scopedRestaurantIds.join('|')]);
 
+  // Auto-print new orders on this device (if the toggle is on). Independent
+  // of the realtime refresh above — uses its own subscription with a dedupe
+  // guard so we never double-fire.
+  useAutoPrintNewOrders(scopedRestaurantIds, branches);
+
   const counts = useMemo(() => {
     const c: Record<string, number> = { active: 0, received: 0, preparing: 0, ready: 0, completed: 0, cancelled: 0 };
     orders.forEach(o => {
@@ -137,7 +144,9 @@ export default function Orders() {
     const branchForOrder =
       (branches ?? []).find((b: any) => b.id === o.restaurant_id) ?? branch ?? null;
 
-    sharedPrintKot({
+    // Reprint = both KOTs (chef ticket + customer bill). Single click
+    // gives the kitchen its order and the customer their receipt.
+    void sharedPrintKot({
       ticket_no: o.code,
       order_code: o.code,
       order_type: o.type,
@@ -166,7 +175,7 @@ export default function Orders() {
         discount:       o.discount,
         payment_status: o.payment_status,
       },
-    });
+    }, 'both');
   };
 
   const openOrder = orders.find(o => o.id === openOrderId) ?? null;
@@ -185,6 +194,7 @@ export default function Orders() {
         }
         actions={
           <>
+            <AutoPrintToggle />
             <button onClick={refetch} className="inline-flex items-center gap-2 rounded-full bg-white border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
               <RotateCcw className="size-4" />
               Refresh

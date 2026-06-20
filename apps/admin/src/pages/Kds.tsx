@@ -6,7 +6,9 @@ import {
 import { cls, elapsedMinSec, type KotStatus } from '@foodcourt/shared';
 import { PageHeader } from '../components/PageHeader';
 import { FullscreenButton, useFullscreen } from '../components/FullscreenToggle';
+import { AutoPrintToggle } from '../components/AutoPrintToggle';
 import { useTenant } from '../lib/tenant';
+import { useAutoPrintNewOrders } from '../lib/useAutoPrintNewOrders';
 import { printKot as sharedPrintKot, type KotPrintInput } from '../lib/printKot';
 type KotPrintItem = KotPrintInput['items'][number];
 import {
@@ -27,6 +29,10 @@ const STATIONS: Array<{ key: Filter; label: string; icon: any }> = [
 export default function Kds() {
   const { org, branch, branches, scopedRestaurantIds } = useTenant();
   const { fullscreen, toggle: toggleFullscreen } = useFullscreen('kds');
+  // Auto-print every new order on this station. The KDS is the most common
+  // place to leave running on the kitchen monitor — auto-print here means
+  // chef tickets land instantly.
+  useAutoPrintNewOrders(scopedRestaurantIds, branches);
   const [tickets, setTickets] = useState<KotTicketWithOrder[]>([]);
   const [history, setHistory] = useState<KotTicketWithOrder[]>([]);
   const [view, setView] = useState<'active' | 'history'>('active');
@@ -124,6 +130,7 @@ export default function Kds() {
             >
               <RefreshCcw className={cls('size-4', loading && 'animate-spin')} /> Refresh
             </button>
+            <AutoPrintToggle />
             <FullscreenButton fullscreen={fullscreen} toggle={toggleFullscreen} />
             <div className="inline-flex rounded-lg bg-slate-100 p-0.5">
               <button
@@ -421,7 +428,8 @@ function capitalize(s: string) {
 }
 
 function printKot(t: KotTicketWithOrder, branchForBranding?: any) {
-  // Delegate to the shared helper so KDS + Orders print identically.
+  // KDS reprint = chef ticket only (cooks don't need the customer bill).
+  // Use Orders.tsx 'both' path for full reprint with totals.
   const tableLabel = t.table_label_db ?? t.payload?.table_label ?? null;
   const customerName = t.customer_name_db ?? t.payload?.customer_name ?? null;
   return sharedPrintKot({
@@ -440,5 +448,5 @@ function printKot(t: KotTicketWithOrder, branchForBranding?: any) {
       logo_url: branchForBranding.logo_url ?? null,
       gstin:    branchForBranding.gstin    ?? null,
     } : undefined,
-  });
+  }, 'chef');
 }
