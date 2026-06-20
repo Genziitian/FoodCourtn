@@ -9,6 +9,8 @@ import {
 import { cls } from '@foodcourt/shared';
 import { TenantProvider, useTenant } from '../lib/tenant';
 import { useSession } from '../lib/session';
+import { useCan } from '../lib/useCan';
+import type { Permission } from '../lib/permissions';
 
 export default function AdminLayout() {
   return (
@@ -37,6 +39,17 @@ function LayoutInner() {
 // ────────────────────────────────────────────────────────────
 
 function Sidebar() {
+  const { can } = useCan();
+
+  // Small helper so each nav item carries its required permission inline.
+  const gate = (perm: Permission, node: React.ReactNode) => (can(perm) ? node : null);
+  // Show a section only if at least one of its children is visible.
+  const section = (title: string, kids: React.ReactNode[]) => {
+    const visible = kids.filter(Boolean);
+    if (!visible.length) return null;
+    return <NavSection title={title}>{visible}</NavSection>;
+  };
+
   return (
     <aside className="admin-sidebar w-[260px] shrink-0 bg-white border-r border-slate-100 flex flex-col">
       <div className="px-5 py-5 flex items-center gap-3">
@@ -49,32 +62,32 @@ function Sidebar() {
       <TenantSwitcher />
 
       <nav className="flex-1 overflow-y-auto mt-6 px-3 pb-4">
-        <NavSection title="Operations">
-          <NavItem to="/dashboard"     icon={LayoutGrid}  label="Dashboard" />
-          <NavItem to="/orders"        icon={ShoppingBag} label="Orders"          badge={12} />
-          <NavItem to="/kds"           icon={Monitor}     label="Kitchen Display" badge={5} />
-          <NavItem to="/payments"      icon={CreditCard}  label="Payments" />
-          <NavItem to="/payments-config" icon={CreditCard} label="Payment Keys" />
-          <NavItem to="/tables"        icon={QrCode}      label="Tables & QR" />
-        </NavSection>
-        <NavSection title="Menu">
-          <NavItem to="/menu"          icon={Utensils} label="Menu Items" />
-          <NavItem to="/combos"        icon={Sparkles} label="Combos" />
-          <NavItem to="/offers"        icon={Tag}      label="Offers & Coupons" badge={3} />
-          <NavItem to="/loyalty"       icon={Coins}    label="Loyalty Coins" />
-        </NavSection>
-        <NavSection title="People">
-          <NavItem to="/customers"     icon={Users}    label="Customers" />
-          <NavItem to="/staff"         icon={Shield}   label="Staff" />
-          <NavItem to="/managers"      icon={UserCog}  label="Branch Managers" />
-        </NavSection>
-        <NavSection title="Insights">
-          <NavItem to="/reports"       icon={ChartBar} label="Reports" />
-          <NavItem to="/notifications" icon={Bell}     label="Notifications"   badge={3} />
-        </NavSection>
-        <NavSection title="System">
-          <NavItem to="/settings"      icon={Settings} label="Settings" />
-        </NavSection>
+        {section('Operations', [
+          <NavItem key="d"  to="/dashboard"     icon={LayoutGrid}  label="Dashboard" />,
+          gate('orders.view',           <NavItem key="o"  to="/orders"        icon={ShoppingBag} label="Orders"          badge={12} />),
+          gate('kds.view',              <NavItem key="k"  to="/kds"           icon={Monitor}     label="Kitchen Display" badge={5} />),
+          gate('payments.view',         <NavItem key="p"  to="/payments"      icon={CreditCard}  label="Payments" />),
+          gate('payments_config.manage',<NavItem key="pc" to="/payments-config" icon={CreditCard} label="Payment Keys" />),
+          gate('tables.manage',         <NavItem key="t"  to="/tables"        icon={QrCode}      label="Tables & QR" />),
+        ])}
+        {section('Menu', [
+          gate('menu.view',     <NavItem key="m"   to="/menu"   icon={Utensils} label="Menu Items" />),
+          gate('combos.manage', <NavItem key="cmb" to="/combos" icon={Sparkles} label="Combos" />),
+          gate('offers.manage', <NavItem key="off" to="/offers" icon={Tag}      label="Offers & Coupons" badge={3} />),
+          gate('loyalty.manage',<NavItem key="loy" to="/loyalty" icon={Coins}   label="Loyalty Coins" />),
+        ])}
+        {section('People', [
+          gate('customers.view',         <NavItem key="cus" to="/customers" icon={Users}   label="Customers" />),
+          gate('staff.manage',           <NavItem key="stf" to="/staff"     icon={Shield}  label="Staff" />),
+          gate('branch_managers.manage', <NavItem key="mgr" to="/managers"  icon={UserCog} label="Branch Managers" />),
+        ])}
+        {section('Insights', [
+          gate('reports.view',       <NavItem key="rep" to="/reports"       icon={ChartBar} label="Reports" />),
+          gate('notifications.view', <NavItem key="ntf" to="/notifications" icon={Bell}     label="Notifications"   badge={3} />),
+        ])}
+        {section('System', [
+          gate('settings.manage', <NavItem key="set" to="/settings" icon={Settings} label="Settings" />),
+        ])}
       </nav>
 
       <UserFooter />

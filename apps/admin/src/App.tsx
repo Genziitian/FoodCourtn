@@ -29,6 +29,7 @@ import BranchManagers from './pages/BranchManagers';
 import Kds from './pages/Kds';
 import PaymentsConfig from './pages/PaymentsConfig';
 import { RequireAuth } from './components/RequireAuth';
+import { RequirePerm } from './components/RequirePerm';
 
 export default function App() {
   return (
@@ -49,16 +50,16 @@ export default function App() {
           <Route path="/reservations"    element={<Reservations />} />
           <Route path="/kds"             element={<Kds />} />
           <Route path="/tables"          element={<Tables />} />
-          <Route path="/menu"            element={<MenuItems />} />
-          <Route path="/combos"          element={<Combos />} />
-          <Route path="/offers"          element={<Offers />} />
-          <Route path="/loyalty"         element={<Loyalty />} />
-          <Route path="/customers"       element={<Customers />} />
-          <Route path="/staff"           element={<Staff />} />
-          <Route path="/managers"        element={<BranchManagers />} />
-          <Route path="/reports"         element={<Reports />} />
-          <Route path="/notifications"   element={<Notifications />} />
-          <Route path="/settings"        element={<SettingsPage />} />
+          <Route path="/menu"            element={<RequirePerm perm="menu.view"><MenuItems /></RequirePerm>} />
+          <Route path="/combos"          element={<RequirePerm perm="combos.manage"><Combos /></RequirePerm>} />
+          <Route path="/offers"          element={<RequirePerm perm="offers.manage"><Offers /></RequirePerm>} />
+          <Route path="/loyalty"         element={<RequirePerm perm="loyalty.manage"><Loyalty /></RequirePerm>} />
+          <Route path="/customers"       element={<RequirePerm perm="customers.view"><Customers /></RequirePerm>} />
+          <Route path="/staff"           element={<RequirePerm perm="staff.manage"><Staff /></RequirePerm>} />
+          <Route path="/managers"        element={<RequirePerm perm="branch_managers.manage"><BranchManagers /></RequirePerm>} />
+          <Route path="/reports"         element={<RequirePerm perm="reports.view"><Reports /></RequirePerm>} />
+          <Route path="/notifications"   element={<RequirePerm perm="notifications.view"><Notifications /></RequirePerm>} />
+          <Route path="/settings"        element={<RequirePerm perm="settings.manage"><SettingsPage /></RequirePerm>} />
         </Route>
       </Route>
 
