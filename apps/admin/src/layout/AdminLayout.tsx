@@ -3,7 +3,7 @@ import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import {
   Bell, Calendar, Check as CheckIcon, ChevronDown, ChevronRight, CreditCard,
   Download, LayoutGrid, LogOut, MapPin, Monitor, RefreshCcw, Search,
-  Settings, Shield, ShoppingBag, Sparkles, Tag, Coins, Utensils, QrCode, Users, UserCog,
+  Package, Settings, Shield, ShoppingBag, Sparkles, Tag, Coins, Utensils, QrCode, Users, UserCog,
   ChartBar, MessageSquare, Check,
 } from 'lucide-react';
 import { cls } from '@foodcourt/shared';
@@ -73,6 +73,7 @@ function Sidebar() {
         {section('Menu', [
           gate('menu.view',     <NavItem key="m"   to="/menu"   icon={Utensils} label="Menu Items" />),
           gate('combos.manage', <NavItem key="cmb" to="/combos" icon={Sparkles} label="Combos" />),
+          gate('inventory.view', <NavItem key="ing" to="/ingredients" icon={Package} label="Ingredients" />),
           gate('offers.manage', <NavItem key="off" to="/offers" icon={Tag}      label="Offers & Coupons" badge={3} />),
           gate('loyalty.manage',<NavItem key="loy" to="/loyalty" icon={Coins}   label="Loyalty Coins" />),
         ])}

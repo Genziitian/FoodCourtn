@@ -706,6 +706,125 @@ export async function setMenuItemLowStockThreshold(id: string, n: number) {
 }
 
 // ────────────────────────────────────────────────────────────
+// Ingredients + Recipes (ingredient-level inventory)
+// ────────────────────────────────────────────────────────────
+
+export interface IngredientRow {
+  id: string;
+  restaurant_id: string;
+  name: string;
+  unit: string;
+  stock_qty: number;
+  low_stock_threshold: number | null;
+  cost_per_unit: number;
+  is_active: boolean;
+}
+
+export interface RecipeLineRow {
+  menu_item_id: string;
+  ingredient_id: string;
+  qty_per_unit: number;
+}
+
+const INGREDIENT_SELECT = 'id, restaurant_id, name, unit, stock_qty, low_stock_threshold, cost_per_unit, is_active';
+
+export async function listIngredients(restaurantId: string): Promise<IngredientRow[]> {
+  const { data, error } = await client()
+    .from('ingredients')
+    .select(INGREDIENT_SELECT)
+    .eq('restaurant_id', restaurantId)
+    .order('name');
+  if (error) {
+    if (/relation .*ingredients.*does not exist/i.test(error.message ?? '')) return [];
+    throw error;
+  }
+  return (data ?? []).map((r: any) => ({
+    ...r,
+    stock_qty: Number(r.stock_qty ?? 0),
+    low_stock_threshold: r.low_stock_threshold != null ? Number(r.low_stock_threshold) : null,
+    cost_per_unit: Number(r.cost_per_unit ?? 0),
+  })) as IngredientRow[];
+}
+
+export async function createIngredient(input: {
+  restaurant_id: string;
+  name: string;
+  unit?: string;
+  stock_qty?: number;
+  low_stock_threshold?: number;
+  cost_per_unit?: number;
+}): Promise<IngredientRow> {
+  const { data, error } = await client()
+    .from('ingredients')
+    .insert({
+      restaurant_id: input.restaurant_id,
+      name: input.name,
+      unit: input.unit ?? 'pcs',
+      stock_qty: input.stock_qty ?? 0,
+      low_stock_threshold: input.low_stock_threshold ?? 0,
+      cost_per_unit: input.cost_per_unit ?? 0,
+      is_active: true,
+    })
+    .select(INGREDIENT_SELECT)
+    .single();
+  if (error) throw error;
+  return data as IngredientRow;
+}
+
+export async function updateIngredient(id: string, patch: Partial<Omit<IngredientRow, 'id' | 'restaurant_id'>>) {
+  const { error } = await client().from('ingredients').update(patch).eq('id', id);
+  if (error) throw error;
+}
+
+export async function deleteIngredient(id: string) {
+  const { error } = await client().from('ingredients').delete().eq('id', id);
+  if (error) throw error;
+}
+
+/** Adjust stock by `delta` (positive = restock, negative = manual deduction). */
+export async function adjustIngredientStock(id: string, delta: number) {
+  // Read-then-write (race-safe enough for low-volume admin actions).
+  const { data, error } = await client()
+    .from('ingredients').select('stock_qty').eq('id', id).single();
+  if (error) throw error;
+  const next = Math.max(0, Number(data?.stock_qty ?? 0) + delta);
+  await updateIngredient(id, { stock_qty: next });
+}
+
+// ── Recipes (menu_item_ingredients) ───────────────────────────────────────
+
+export async function listRecipe(menuItemId: string): Promise<RecipeLineRow[]> {
+  const { data, error } = await client()
+    .from('menu_item_ingredients')
+    .select('menu_item_id, ingredient_id, qty_per_unit')
+    .eq('menu_item_id', menuItemId);
+  if (error) {
+    if (/relation .*menu_item_ingredients.*does not exist/i.test(error.message ?? '')) return [];
+    throw error;
+  }
+  return (data ?? []).map((r: any) => ({
+    ...r,
+    qty_per_unit: Number(r.qty_per_unit),
+  })) as RecipeLineRow[];
+}
+
+export async function saveRecipe(menuItemId: string, lines: Array<{ ingredient_id: string; qty_per_unit: number }>) {
+  const c = client();
+  const clean = lines.filter(l => l.ingredient_id && l.qty_per_unit > 0);
+  // Wipe-and-rewrite is cleaner than diff-and-merge for a small list.
+  const { error: delErr } = await c.from('menu_item_ingredients').delete().eq('menu_item_id', menuItemId);
+  if (delErr) throw delErr;
+  if (!clean.length) return;
+  const rows = clean.map(l => ({
+    menu_item_id: menuItemId,
+    ingredient_id: l.ingredient_id,
+    qty_per_unit: l.qty_per_unit,
+  }));
+  const { error: insErr } = await c.from('menu_item_ingredients').insert(rows);
+  if (insErr) throw insErr;
+}
+
+// ────────────────────────────────────────────────────────────
 // Upsell targets — per-item add-on suggestions
 // ────────────────────────────────────────────────────────────
 

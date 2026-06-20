@@ -5,6 +5,7 @@ import Dashboard from './pages/Dashboard';
 import Orders from './pages/Orders';
 import MenuItems from './pages/MenuItems';
 import Combos from './pages/Combos';
+import Ingredients from './pages/Ingredients';
 import Offers from './pages/Offers';
 import Loyalty from './pages/Loyalty';
 import Tables from './pages/Tables';
@@ -52,6 +53,7 @@ export default function App() {
           <Route path="/tables"          element={<Tables />} />
           <Route path="/menu"            element={<RequirePerm perm="menu.view"><MenuItems /></RequirePerm>} />
           <Route path="/combos"          element={<RequirePerm perm="combos.manage"><Combos /></RequirePerm>} />
+          <Route path="/ingredients"     element={<RequirePerm perm="inventory.view"><Ingredients /></RequirePerm>} />
           <Route path="/offers"          element={<RequirePerm perm="offers.manage"><Offers /></RequirePerm>} />
           <Route path="/loyalty"         element={<RequirePerm perm="loyalty.manage"><Loyalty /></RequirePerm>} />
           <Route path="/customers"       element={<RequirePerm perm="customers.view"><Customers /></RequirePerm>} />

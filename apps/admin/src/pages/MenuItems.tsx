@@ -14,7 +14,8 @@ import {
   deleteMenuItem, setMenuItemInStock, createCategory, createCategoriesBulk, seedDefaultMenu,
   createMenuVariants, createMenuModifiers,
   listUpsellTargets, createUpsellTarget, deleteUpsellTarget,
-  type MenuItemRow, type CategoryRow, type UpsellTargetRow,
+  listIngredients, listRecipe, saveRecipe,
+  type MenuItemRow, type CategoryRow, type UpsellTargetRow, type IngredientRow, type RecipeLineRow,
 } from '../lib/api';
 
 export default function MenuItems() {
@@ -1037,8 +1038,188 @@ function ItemEditorInner({
         {!isNew && (
           <UpsellPanel itemId={draft.id} restaurantId={draft.restaurant_id} />
         )}
+
+        {!isNew && (
+          <RecipePanel itemId={draft.id} restaurantId={draft.restaurant_id} />
+        )}
       </div>
     </Drawer>
+  );
+}
+
+/**
+ * Recipe builder for an existing menu item — picks ingredients from the
+ * branch's ingredients table and sets per-unit consumption. The DB trigger
+ * does the rest: every order line decrements the linked ingredients and
+ * auto-flips the menu item out of stock if any ingredient runs out.
+ */
+function RecipePanel({ itemId, restaurantId }: { itemId: string; restaurantId: string }) {
+  const [ingredients, setIngredients] = useState<IngredientRow[]>([]);
+  const [lines, setLines] = useState<RecipeLineRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [picking, setPicking] = useState(false);
+  const [pickedId, setPickedId] = useState('');
+  const [pickedQty, setPickedQty] = useState<number>(1);
+  const [err, setErr] = useState<string | null>(null);
+
+  const refresh = useCallback(async () => {
+    setLoading(true); setErr(null);
+    try {
+      const [ings, recipe] = await Promise.all([
+        listIngredients(restaurantId),
+        listRecipe(itemId),
+      ]);
+      setIngredients(ings);
+      setLines(recipe);
+    } catch (e: any) {
+      setErr(e.message ?? 'Could not load recipe');
+    } finally { setLoading(false); }
+  }, [restaurantId, itemId]);
+
+  useEffect(() => { refresh(); }, [refresh]);
+
+  const ingById = useMemo(() => {
+    const m = new Map<string, IngredientRow>();
+    ingredients.forEach(i => m.set(i.id, i));
+    return m;
+  }, [ingredients]);
+
+  const candidates = useMemo(() => {
+    const taken = new Set(lines.map(l => l.ingredient_id));
+    return ingredients.filter(i => !taken.has(i.id));
+  }, [ingredients, lines]);
+
+  const persist = async (next: RecipeLineRow[]) => {
+    setSaving(true); setErr(null);
+    try {
+      await saveRecipe(itemId, next.map(l => ({ ingredient_id: l.ingredient_id, qty_per_unit: l.qty_per_unit })));
+      setLines(next);
+    } catch (e: any) { setErr(e.message ?? 'Save failed'); }
+    finally { setSaving(false); }
+  };
+
+  const addLine = async () => {
+    if (!pickedId || pickedQty <= 0) return;
+    const next = [...lines, { menu_item_id: itemId, ingredient_id: pickedId, qty_per_unit: pickedQty }];
+    setPickedId(''); setPickedQty(1); setPicking(false);
+    await persist(next);
+  };
+
+  const setQty = async (ingredientId: string, qty: number) => {
+    if (qty <= 0) return;
+    await persist(lines.map(l => l.ingredient_id === ingredientId ? { ...l, qty_per_unit: qty } : l));
+  };
+
+  const remove = async (ingredientId: string) => {
+    await persist(lines.filter(l => l.ingredient_id !== ingredientId));
+  };
+
+  return (
+    <section className="bg-slate-50 rounded-xl p-4 space-y-3">
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <h3 className="text-sm font-bold">Recipe (ingredients consumed)</h3>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Auto-hides this item when any linked ingredient runs out. Manage ingredients on the Ingredients page.
+          </p>
+        </div>
+        {!picking && candidates.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setPicking(true)}
+            className="text-xs font-semibold text-brand-700 hover:text-brand-800"
+          >
+            + Add ingredient
+          </button>
+        )}
+      </div>
+
+      {err && <div className="text-xs text-rose-600">{err}</div>}
+
+      {loading ? (
+        <p className="text-xs text-slate-500">Loading…</p>
+      ) : ingredients.length === 0 ? (
+        <p className="text-xs text-amber-700 bg-amber-50 rounded-md px-2 py-1.5">
+          No ingredients defined yet. Add them on the Ingredients page first.
+        </p>
+      ) : lines.length === 0 && !picking ? (
+        <p className="text-xs text-slate-500">No recipe — ingredient inventory isn't tracked for this item.</p>
+      ) : (
+        <ul className="space-y-1.5">
+          {lines.map(l => {
+            const ing = ingById.get(l.ingredient_id);
+            return (
+              <li key={l.ingredient_id} className="flex items-center gap-2 bg-white rounded-lg px-3 py-2 border border-slate-200">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold truncate">{ing?.name ?? <em className="text-rose-500">deleted ingredient</em>}</p>
+                  {ing && <p className="text-xs text-slate-500">{ing.stock_qty} {ing.unit} in stock</p>}
+                </div>
+                <div className="inline-flex items-center rounded-full border border-slate-200 overflow-hidden">
+                  <input
+                    type="number" min="0.01" step="0.01"
+                    value={l.qty_per_unit}
+                    onChange={e => setQty(l.ingredient_id, Number(e.target.value))}
+                    className="w-16 px-2 py-1 text-sm text-center outline-none"
+                  />
+                  <span className="px-2 py-1 text-xs text-slate-500 bg-slate-50 border-l border-slate-200">
+                    {ing?.unit ?? 'unit'} / serving
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => remove(l.ingredient_id)}
+                  className="size-7 grid place-items-center rounded-full text-rose-500 hover:bg-rose-50"
+                  aria-label="Remove"
+                >
+                  <Trash2 className="size-3.5" />
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
+      {picking && (
+        <div className="bg-white border border-slate-200 rounded-lg p-3 space-y-2">
+          <div className="grid grid-cols-2 gap-2">
+            <label className="block">
+              <span className="block text-[11px] font-semibold uppercase tracking-wider text-slate-600 mb-1">Ingredient</span>
+              <select
+                value={pickedId}
+                onChange={e => setPickedId(e.target.value)}
+                className="w-full rounded-md border border-slate-200 px-2 py-1.5 text-sm outline-none focus:border-brand-500 bg-white"
+              >
+                <option value="">— Pick —</option>
+                {candidates.map(c => <option key={c.id} value={c.id}>{c.name} ({c.unit})</option>)}
+              </select>
+            </label>
+            <label className="block">
+              <span className="block text-[11px] font-semibold uppercase tracking-wider text-slate-600 mb-1">Qty per serving</span>
+              <input
+                type="number" min="0.01" step="0.01"
+                value={pickedQty}
+                onChange={e => setPickedQty(Number(e.target.value || 0))}
+                className="w-full rounded-md border border-slate-200 px-2 py-1.5 text-sm outline-none focus:border-brand-500"
+              />
+            </label>
+          </div>
+          <div className="flex justify-end gap-2 pt-1">
+            <button
+              type="button"
+              onClick={() => { setPicking(false); setPickedId(''); setPickedQty(1); }}
+              className="px-3 py-1 text-xs font-semibold text-slate-600 hover:text-slate-900"
+            >Cancel</button>
+            <button
+              type="button"
+              disabled={!pickedId || pickedQty <= 0 || saving}
+              onClick={addLine}
+              className="px-3 py-1 text-xs font-semibold rounded-full bg-brand-600 text-white hover:bg-brand-700 disabled:opacity-50"
+            >Add to recipe</button>
+          </div>
+        </div>
+      )}
+    </section>
   );
 }
 
