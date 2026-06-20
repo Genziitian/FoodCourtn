@@ -679,6 +679,55 @@ export async function setMenuItemInStock(id: string, in_stock: boolean) {
   if (error) throw error;
 }
 
+// ────────────────────────────────────────────────────────────
+// Upsell targets — per-item add-on suggestions
+// ────────────────────────────────────────────────────────────
+
+export interface UpsellTargetRow {
+  id: string;
+  restaurant_id: string;
+  trigger_item_id: string;
+  suggested_item_id: string;
+  prompt_text: string | null;
+  sort_order: number;
+  is_active: boolean;
+}
+
+export async function listUpsellTargets(triggerItemId: string): Promise<UpsellTargetRow[]> {
+  const { data, error } = await client()
+    .from('upsell_targets')
+    .select('*')
+    .eq('trigger_item_id', triggerItemId)
+    .order('sort_order');
+  if (error) {
+    // Table may not exist yet (migration not run). Treat as empty.
+    if (/relation .*upsell_targets.*does not exist/i.test(error.message ?? '')) return [];
+    throw error;
+  }
+  return (data ?? []) as UpsellTargetRow[];
+}
+
+export async function createUpsellTarget(input: {
+  restaurant_id: string;
+  trigger_item_id: string;
+  suggested_item_id: string;
+  prompt_text?: string;
+  sort_order?: number;
+}): Promise<UpsellTargetRow> {
+  const { data, error } = await client()
+    .from('upsell_targets')
+    .insert({ ...input, is_active: true })
+    .select('*')
+    .single();
+  if (error) throw error;
+  return data as UpsellTargetRow;
+}
+
+export async function deleteUpsellTarget(id: string) {
+  const { error } = await client().from('upsell_targets').delete().eq('id', id);
+  if (error) throw error;
+}
+
 /**
  * Upload a food photo from the device. Stored in the `menu-images` bucket
  * (public read) so the customer app can render it directly. Returns the

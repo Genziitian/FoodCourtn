@@ -13,7 +13,8 @@ import {
   listMenuItems, listCategories, createMenuItem, updateMenuItem,
   deleteMenuItem, setMenuItemInStock, createCategory, createCategoriesBulk, seedDefaultMenu,
   createMenuVariants, createMenuModifiers,
-  type MenuItemRow, type CategoryRow,
+  listUpsellTargets, createUpsellTarget, deleteUpsellTarget,
+  type MenuItemRow, type CategoryRow, type UpsellTargetRow,
 } from '../lib/api';
 
 export default function MenuItems() {
@@ -989,8 +990,173 @@ function ItemEditorInner({
             description="Lists this item under the dedicated Combos tab and lets the cart smart-suggest it when the customer's subtotal is within ₹60."
           />
         </section>
+
+        {!isNew && (
+          <UpsellPanel itemId={draft.id} restaurantId={draft.restaurant_id} />
+        )}
       </div>
     </Drawer>
+  );
+}
+
+/**
+ * Manage per-item upsell add-ons. Lives at the bottom of the menu-item
+ * editor; only visible for items that have been saved (need a real id to
+ * link from). The customer cart pops these as "Add fries for ₹49?" prompts.
+ */
+function UpsellPanel({ itemId, restaurantId }: { itemId: string; restaurantId: string }) {
+  const [targets, setTargets] = useState<UpsellTargetRow[]>([]);
+  const [allItems, setAllItems] = useState<MenuItemRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [picking, setPicking] = useState(false);
+  const [pickedId, setPickedId] = useState('');
+  const [pickedPrompt, setPickedPrompt] = useState('');
+  const [err, setErr] = useState<string | null>(null);
+
+  const refresh = useCallback(async () => {
+    setLoading(true); setErr(null);
+    try {
+      const [t, items] = await Promise.all([
+        listUpsellTargets(itemId),
+        listMenuItems(restaurantId),
+      ]);
+      setTargets(t);
+      setAllItems(items);
+    } catch (e: any) {
+      setErr(e.message ?? 'Could not load add-ons');
+    } finally { setLoading(false); }
+  }, [itemId, restaurantId]);
+
+  useEffect(() => { refresh(); }, [refresh]);
+
+  const itemById = useMemo(() => {
+    const m = new Map<string, MenuItemRow>();
+    allItems.forEach(i => m.set(i.id, i));
+    return m;
+  }, [allItems]);
+
+  const candidates = useMemo(() => {
+    const taken = new Set(targets.map(t => t.suggested_item_id));
+    return allItems.filter(i => i.id !== itemId && !taken.has(i.id));
+  }, [allItems, targets, itemId]);
+
+  const add = async () => {
+    if (!pickedId) return;
+    try {
+      await createUpsellTarget({
+        restaurant_id: restaurantId,
+        trigger_item_id: itemId,
+        suggested_item_id: pickedId,
+        prompt_text: pickedPrompt.trim() || undefined,
+        sort_order: targets.length,
+      });
+      setPickedId(''); setPickedPrompt(''); setPicking(false);
+      refresh();
+    } catch (e: any) { alert(e.message ?? 'Could not add'); }
+  };
+
+  const remove = async (id: string) => {
+    if (!confirm('Remove this add-on?')) return;
+    const prev = targets;
+    setTargets(s => s.filter(t => t.id !== id));
+    try { await deleteUpsellTarget(id); }
+    catch (e: any) { alert(e.message); setTargets(prev); }
+  };
+
+  return (
+    <section className="bg-slate-50 rounded-xl p-4 space-y-3">
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <h3 className="text-sm font-bold">Smart upsell add-ons</h3>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Pop these suggestions after the customer adds this item to their cart.
+          </p>
+        </div>
+        {!picking && candidates.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setPicking(true)}
+            className="text-xs font-semibold text-brand-700 hover:text-brand-800"
+          >
+            + Add
+          </button>
+        )}
+      </div>
+
+      {err && <div className="text-xs text-rose-600">{err}</div>}
+
+      {loading ? (
+        <p className="text-xs text-slate-500">Loading…</p>
+      ) : targets.length === 0 && !picking ? (
+        <p className="text-xs text-slate-500">No add-ons yet — customers won't see a popup after adding this item.</p>
+      ) : (
+        <ul className="space-y-1.5">
+          {targets.map(t => {
+            const suggested = itemById.get(t.suggested_item_id);
+            return (
+              <li key={t.id} className="flex items-center gap-2 bg-white rounded-lg px-3 py-2 border border-slate-200">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold truncate">{suggested?.name ?? <em className="text-rose-500">deleted item</em>}</p>
+                  {t.prompt_text && <p className="text-xs text-slate-500 truncate">"{t.prompt_text}"</p>}
+                </div>
+                {suggested && (
+                  <span className="text-xs font-bold text-slate-700 shrink-0">+{inr(Number(suggested.base_price))}</span>
+                )}
+                <button
+                  type="button"
+                  onClick={() => remove(t.id)}
+                  className="size-7 grid place-items-center rounded-full text-rose-500 hover:bg-rose-50"
+                  aria-label="Remove"
+                >
+                  <Trash2 className="size-3.5" />
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
+      {picking && (
+        <div className="bg-white border border-slate-200 rounded-lg p-3 space-y-2">
+          <label className="block">
+            <span className="block text-[11px] font-semibold uppercase tracking-wider text-slate-600 mb-1">Suggested item</span>
+            <select
+              value={pickedId}
+              onChange={e => setPickedId(e.target.value)}
+              className="w-full rounded-md border border-slate-200 px-2 py-1.5 text-sm outline-none focus:border-brand-500 bg-white"
+            >
+              <option value="">— Pick an item —</option>
+              {candidates.map(c => (
+                <option key={c.id} value={c.id}>{c.name} · {inr(c.base_price)}</option>
+              ))}
+            </select>
+          </label>
+          <label className="block">
+            <span className="block text-[11px] font-semibold uppercase tracking-wider text-slate-600 mb-1">Popup text (optional)</span>
+            <input
+              value={pickedPrompt}
+              onChange={e => setPickedPrompt(e.target.value)}
+              placeholder="Add fries for ₹49?"
+              className="w-full rounded-md border border-slate-200 px-2 py-1.5 text-sm outline-none focus:border-brand-500"
+            />
+            <p className="text-[11px] text-slate-400 mt-1">Leave blank to auto-format: "Add &lt;name&gt; for ₹X?"</p>
+          </label>
+          <div className="flex justify-end gap-2 pt-1">
+            <button
+              type="button"
+              onClick={() => { setPicking(false); setPickedId(''); setPickedPrompt(''); }}
+              className="px-3 py-1 text-xs font-semibold text-slate-600 hover:text-slate-900"
+            >Cancel</button>
+            <button
+              type="button"
+              disabled={!pickedId}
+              onClick={add}
+              className="px-3 py-1 text-xs font-semibold rounded-full bg-brand-600 text-white hover:bg-brand-700 disabled:opacity-50"
+            >Save add-on</button>
+          </div>
+        </div>
+      )}
+    </section>
   );
 }
 

@@ -141,6 +141,114 @@ export async function getCoupons(restaurantId: string): Promise<Coupon[]> {
   return (data ?? []) as Coupon[];
 }
 
+// ────────────────────────────────────────────────────────────
+// Smart upsell — per-item add-ons + co-occurrence "also ordered"
+// ────────────────────────────────────────────────────────────
+
+export interface UpsellSuggestion {
+  menu_item_id: string;
+  name: string;
+  image_url: string | null;
+  base_price: number;
+  prompt_text: string | null;
+  source: 'curated' | 'cooccurrence';
+}
+
+/**
+ * Pull suggestions for `triggerItemId`:
+ *   1) Curated `upsell_targets` rows the admin set up — highest priority.
+ *   2) Co-occurrence — items frequently ordered with this one in the past
+ *      30 days, sourced from `order_items`. Cheap N+1: one extra query.
+ *
+ * Returns up to `limit` rows, curated first, deduped.
+ */
+export async function getUpsellsForItem(
+  restaurantId: string,
+  triggerItemId: string,
+  limit = 3,
+): Promise<UpsellSuggestion[]> {
+  const c = client();
+  const out: UpsellSuggestion[] = [];
+
+  // --- 1. Curated ---
+  try {
+    const { data: curated } = await c
+      .from('upsell_targets')
+      .select('suggested_item_id, prompt_text, suggested:menu_items!upsell_targets_suggested_item_id_fkey(id, name, image_url, base_price, in_stock)')
+      .eq('trigger_item_id', triggerItemId)
+      .eq('is_active', true)
+      .order('sort_order')
+      .limit(limit);
+    (curated ?? []).forEach((r: any) => {
+      const s = r.suggested;
+      if (!s || s.in_stock === false) return;
+      out.push({
+        menu_item_id: s.id,
+        name: s.name,
+        image_url: s.image_url,
+        base_price: Number(s.base_price),
+        prompt_text: r.prompt_text,
+        source: 'curated',
+      });
+    });
+  } catch { /* table may not exist yet — fall through to co-occurrence */ }
+
+  if (out.length >= limit) return out.slice(0, limit);
+
+  // --- 2. Co-occurrence ---
+  // Find recent order_ids that contained the trigger item.
+  const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+  const { data: triggerLines } = await c
+    .from('order_items')
+    .select('order_id, order:orders!inner(restaurant_id, created_at, status)')
+    .eq('menu_item_id', triggerItemId)
+    .gte('order.created_at', since)
+    .eq('order.restaurant_id', restaurantId)
+    .neq('order.status', 'cancelled')
+    .limit(200);
+
+  const orderIds = Array.from(new Set((triggerLines ?? []).map((r: any) => r.order_id))).slice(0, 200);
+  if (!orderIds.length) return out;
+
+  const { data: companionLines } = await c
+    .from('order_items')
+    .select('menu_item_id')
+    .in('order_id', orderIds)
+    .neq('menu_item_id', triggerItemId)
+    .limit(1000);
+
+  const counts = new Map<string, number>();
+  (companionLines ?? []).forEach((r: any) => {
+    counts.set(r.menu_item_id, (counts.get(r.menu_item_id) ?? 0) + 1);
+  });
+  const ranked = [...counts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, limit);
+  if (!ranked.length) return out;
+
+  const taken = new Set(out.map(x => x.menu_item_id));
+  const wantedIds = ranked.map(([id]) => id).filter(id => !taken.has(id));
+  if (!wantedIds.length) return out;
+
+  const { data: items } = await c
+    .from('menu_items')
+    .select('id, name, image_url, base_price, in_stock')
+    .in('id', wantedIds);
+  (items ?? []).forEach((it: any) => {
+    if (it.in_stock === false) return;
+    out.push({
+      menu_item_id: it.id,
+      name: it.name,
+      image_url: it.image_url,
+      base_price: Number(it.base_price),
+      prompt_text: null,
+      source: 'cooccurrence',
+    });
+  });
+
+  return out.slice(0, limit);
+}
+
 /**
  * Map of coupon_id → number of times THIS customer has redeemed that coupon
  * (excluding cancelled orders). Used to enforce per_user_limit at apply time

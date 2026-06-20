@@ -4,6 +4,7 @@ import { cls, inr } from '@foodcourt/shared';
 import { useCart } from '../lib/cart';
 import { VegMark } from './VegMark';
 import { Icon } from './Icon';
+import { UpsellPopup } from './UpsellPopup';
 
 interface Props {
   item: MenuItem | null;
@@ -18,6 +19,7 @@ export function ItemDetailModal({ item, onClose }: Props) {
   const [spice, setSpice] = useState<string | null>(null);
   const [notes, setNotes] = useState('');
   const [qty, setQty] = useState(1);
+  const [upsell, setUpsell] = useState<{ id: string; name: string } | null>(null);
 
   // Reset when a new item is opened
   useEffect(() => {
@@ -67,7 +69,9 @@ export function ItemDetailModal({ item, onClose }: Props) {
       delivery_charge_per_unit: Number(item.delivery_charge ?? 0),
       notes: notes.trim() || undefined,
     });
-    onClose();
+    // Open the upsell pop right after the add. If no suggestions exist it
+    // auto-closes itself and we fall through to onClose.
+    setUpsell({ id: item.id, name: item.name });
   };
 
   return (
@@ -313,6 +317,15 @@ export function ItemDetailModal({ item, onClose }: Props) {
           </div>
         </div>
       </div>
+
+      {upsell && (
+        <UpsellPopup
+          restaurantId={item.restaurant_id}
+          triggerItemId={upsell.id}
+          triggerName={upsell.name}
+          onClose={() => { setUpsell(null); onClose(); }}
+        />
+      )}
     </div>
   );
 }
