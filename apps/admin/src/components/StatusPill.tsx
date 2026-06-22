@@ -8,6 +8,7 @@ const ORDER_STYLE: Record<OrderStatus, { bg: string; dot: string }> = {
   completed: { bg: 'bg-slate-100 text-slate-700',    dot: 'bg-slate-500' },
   cancelled: { bg: 'bg-rose-50 text-rose-700',       dot: 'bg-rose-500' },
 };
+const UNKNOWN_ORDER_STYLE = { bg: 'bg-slate-100 text-slate-700', dot: 'bg-slate-400' };
 
 const PAYMENT_STYLE: Record<PaymentStatus, { bg: string; label: string }> = {
   success:  { bg: 'bg-emerald-50 text-emerald-700', label: 'Paid' },
@@ -16,6 +17,7 @@ const PAYMENT_STYLE: Record<PaymentStatus, { bg: string; label: string }> = {
   refunded: { bg: 'bg-slate-100 text-slate-700',    label: 'Refunded' },
   counter:  { bg: 'bg-blue-50 text-blue-700',       label: 'At Counter' },
 };
+const UNKNOWN_PAYMENT_STYLE = { bg: 'bg-slate-100 text-slate-700', label: 'Unknown' };
 
 /**
  * Status pill for orders. Pass `orderType` (dine_in / takeaway / delivery)
@@ -24,18 +26,23 @@ const PAYMENT_STYLE: Record<PaymentStatus, { bg: string; label: string }> = {
  */
 export function OrderStatusPill({
   status, orderType,
-}: { status: OrderStatus; orderType?: 'dine_in' | 'takeaway' | 'delivery' | string | null }) {
-  const s = ORDER_STYLE[status];
+}: { status: OrderStatus | string | null | undefined; orderType?: 'dine_in' | 'takeaway' | 'delivery' | string | null }) {
+  const normalized = status ?? 'unknown';
+  const s = ORDER_STYLE[normalized as OrderStatus] ?? UNKNOWN_ORDER_STYLE;
   return (
     <span className={cls('inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold', s.bg)}>
       <span className={cls('size-1.5 rounded-full', s.dot)} />
-      {statusLabel(orderType, status)}
+      {ORDER_STYLE[normalized as OrderStatus] ? statusLabel(orderType, normalized) : normalized}
     </span>
   );
 }
 
-export function PaymentStatusPill({ status }: { status: PaymentStatus }) {
-  const s = PAYMENT_STYLE[status];
+export function PaymentStatusPill({ status }: { status: PaymentStatus | string | null | undefined }) {
+  const normalized = status ?? 'unknown';
+  const s = PAYMENT_STYLE[normalized as PaymentStatus] ?? {
+    ...UNKNOWN_PAYMENT_STYLE,
+    label: normalized.replace(/_/g, ' '),
+  };
   return (
     <span className={cls('inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold', s.bg)}>
       {s.label}

@@ -21,14 +21,18 @@ export type AutoPrintMode = 'off' | 'chef' | 'customer' | 'both';
 
 export function getAutoPrintMode(): AutoPrintMode {
   if (typeof window === 'undefined') return 'off';
-  const raw = window.localStorage.getItem(STORAGE_KEY) as AutoPrintMode | null;
-  return raw === 'chef' || raw === 'customer' || raw === 'both' ? raw : 'off';
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY) as AutoPrintMode | null;
+    return raw === 'chef' || raw === 'customer' || raw === 'both' ? raw : 'off';
+  } catch {
+    return 'off';
+  }
 }
 
 export function setAutoPrintMode(mode: AutoPrintMode) {
   if (typeof window === 'undefined') return;
-  window.localStorage.setItem(STORAGE_KEY, mode);
-  window.dispatchEvent(new CustomEvent('fc-autoprint-changed', { detail: mode }));
+  try { window.localStorage.setItem(STORAGE_KEY, mode); } catch { /* ignore */ }
+  try { window.dispatchEvent(new CustomEvent('fc-autoprint-changed', { detail: mode })); } catch { /* ignore */ }
 }
 
 /**
