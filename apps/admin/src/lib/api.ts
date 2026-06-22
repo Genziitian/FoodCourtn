@@ -305,13 +305,16 @@ export async function cancelOrder(id: string) {
   if (error) throw error;
 }
 
+let orderSubscriptionSeq = 0;
+
 export function subscribeToOrders(
   restaurantIds: string[],
   onChange: (event: { type: 'insert' | 'update'; row: { id: string; restaurant_id: string } }) => void,
 ) {
   const c = client();
+  orderSubscriptionSeq += 1;
   const channel = c
-    .channel('admin-orders')
+    .channel(`admin-orders-${orderSubscriptionSeq}`)
     .on(
       'postgres_changes',
       { event: 'INSERT', schema: 'public', table: 'orders' },
